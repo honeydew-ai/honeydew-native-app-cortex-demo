@@ -6,6 +6,8 @@ It uses the `tpch_demo` workspace based on [TPC-H Snowflake sample data](https:/
 
 ## Example output
 
+For the question "promotion revenue by year and region":
+
 ![Output for "promotion revenue by year and region"](images/output.png)
 
 ## Usage
