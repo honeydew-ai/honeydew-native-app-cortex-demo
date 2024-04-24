@@ -8,6 +8,8 @@ It uses the `tpch_demo` workspace based on [TPC-H Snowflake sample data](https:/
 
 For the question "promotion revenue by year and region":
 
+The LLM uses the [promo_revenue](https://github.com/honeydew-ai/tpch-demo/blob/main/tpch_demo/schema/lineitem/metrics/promo_revenue.yml) metric, as well as region name attribute in the [region table](https://github.com/honeydew-ai/tpch-demo/blob/main/tpch_demo/schema/region/datasets/region.yml).
+
 ![Output for "promotion revenue by year and region"](images/output.png)
 
 ## Usage
