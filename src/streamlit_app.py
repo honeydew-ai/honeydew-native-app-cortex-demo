@@ -28,16 +28,16 @@ TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
 
 ## Cortex Prompt Template
 PROMPT = """
-Act as the Honeydew assistant to help users see data. Follow the role described below. 
+Act as the Honeydew assistant to help users see data. Follow the role described below.
 
-The date today is {today} 
+The date today is {today}
 
 # Your Task
 
 You will be provided with a schema. A user will ask a question about the schema or about data using that schema.
-Determine if this a question about schema or data. 
+Determine if this a question about schema or data.
  * If about schema, answer in markdown.
- * If about data, you will create a function call to `HONEYEDEW` to provide data for the user question.
+ * If about data, you will create a function call to `HONEYDEW` to provide data for the user question.
 The function looks like
 ```
 CALL HONEYDEW({{
@@ -66,15 +66,15 @@ A response will be a list of metrics relevant to customers in the schema
 ## Response Rules
 
 1. IF ABOUT DATA - NO TEXT ONLY THE FUNCTION!
-2. Output text if there something missing or the question is about the schema. 
+2. Output text if there something missing or the question is about the schema.
 3. DO NOT CALCULATE NEW THINGS. USE ONLY THE SCHEMA.
-4. ONLY USE ATTRIBUTE OR METRICS THAT EXIST. SEARCH AGAIN. FAIL IF CANT FIND. 
+4. ONLY USE ATTRIBUTE OR METRICS THAT EXIST. SEARCH AGAIN. FAIL IF CANT FIND.
 5. IF YOU CAN''T FIND A METRIC, DON''T HELP THE USER TO BUILD IT - FAIL INSTEAD.
 6. IF YOU CAN''T FIND AN ATTRIBUTE - LET THE USER KNOW WITH ERROR RESPONSE
 
 ## Dealing with dates
 
-Use date entity for date comparisons.  
+Use date entity for date comparisons.
 
 Use following Snowflake SQL functions for dates:
 * `CURRENT_DATE` to refer to now
@@ -90,15 +90,15 @@ filters:
 * number can be compared to numbers `table.attr = 5` or ranges `table.attr >= 3 and table.attr < 10`
 * string can be compared to a value `table.attr = val` or values: `table.attr IN (''''val1'''', ''''val2'''', ...)` or LIKE
 * boolean can be true or false `table.attr = true` or `table.attr = false`
-* date can use date Snowflake SQL functions and CURRENT_DATE(), i.e. `YEAR(table.attr) = 2023` 
+* date can use date Snowflake SQL functions and CURRENT_DATE(), i.e. `YEAR(table.attr) = 2023`
 * do not compare attributes
 
-group_by: 
+group_by:
 * may choose only from the schema attributes
 * everything is automatically connected - you can use any group you want
 
-metrics: 
-* may choose only from the schema metrics 
+metrics:
+* may choose only from the schema metrics
 
 # Your Schema
 
@@ -133,11 +133,11 @@ def get_schema():
     ## Load the AI domain only
     data = session.sql(
         f"""
-with 
+with
  entities as (select entities from table({HONEYDEW_APP}.API.SHOW_DOMAINS('{WORKSPACE}','{BRANCH}')) where name='{AI_DOMAIN}'),
  entities_unnest as (select f.value:name::varchar as name, f.value:fields::array(varchar) as fields from entities e, LATERAL FLATTEN(input => e.entities) f),
- domain_fields as (select entity, fields.name, type, datatype, description from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}')) fields 
-   JOIN  entities_unnest 
+ domain_fields as (select entity, fields.name, type, datatype, description from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}')) fields
+   JOIN  entities_unnest
    ON fields.entity = entities_unnest.name and (entities_unnest.fields is null or array_contains(fields.name, entities_unnest.fields)))
 select * from domain_fields
 """
@@ -193,11 +193,11 @@ def run_cortex(sys_prompt, user_question, model="mistral-large", temperature=0.2
     with st.spinner("Asking AI..."):
         data = get_single_sql_with_debug(
             f"""
-        SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', 
+        SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}',
         [
             {{'role':'system', 'content': '{escape_quote(sys_prompt)}'}},
             {{'role':'user', 'content': '{escape_quote(user_question)}'}}
-        ], 
+        ],
         {{'temperature': {temperature}, 'max_tokens': 500}}) """
         )
         return json.loads(data)
