@@ -22,9 +22,8 @@ The LLM uses the [promo_revenue](https://github.com/honeydew-ai/tpch-demo/blob/m
 
 ## Usage
 
-Put the code in `src/streamlit_app.py` in a Snowflake Streamlit application. 
+Put the code in `src/streamlit_app.py` in a Snowflake Streamlit application.
 
 Make sure it runs with a user that has access to Cortex ([required privileges](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#required-privileges)) and to the Native App ([installation guide steps 6-7](https://honeydew.ai/docs/integration/snowflake-native-app#installation))
 
-
-
+Note that if the relevant Cortex models are not supported in your Snowflake account region, you can use them through [Cross-region inference](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cross-region-inference).
