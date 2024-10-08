@@ -21,6 +21,13 @@ AI_DOMAIN = "llm"
 ## Set to '1' to see sent queries
 DEBUG = 0
 
+
+## Cortex LLM Model to use
+CORTEX_LLM = "mistral-large"
+
+## Results limit
+RESULTS_LIMIT = 10000
+
 ## Set to True if schema contains parameters
 SUPPORT_PARAMETERS = False
 
@@ -189,7 +196,7 @@ def escape_quote(str):
     return str
 
 
-def run_cortex(sys_prompt, user_question, model="mistral-large", temperature=0.2):
+def run_cortex(sys_prompt, user_question, model=CORTEX_LLM, temperature=0.2):
     with st.spinner("Asking AI..."):
         data = get_single_sql_with_debug(
             f"""
@@ -239,37 +246,46 @@ def write_explain(response):
 
 
 def make_chart(df):
-    # Bug in streamlit with dots in column names - update column names
-    updated_columns = {col: col.replace(".", "_") for col in df.columns}
-    df = df.rename(columns=updated_columns)
-    numeric_columns = list(df.select_dtypes(include=["number"]).columns)
-    if len(numeric_columns) == 0:
-        return
-    # Bug in snowflake connector - does not set date types correctly in pandas, so manually detecting
-    date_columns = ["date_date", "date_week", "date_month", "date_year", "date_quarter"]
-    # Filter columns that match the specific names and exist in the DataFrame
-    date_columns = list(df.columns.intersection(date_columns))
-    str_columns = df.select_dtypes(include=["object"]).columns
-    str_columns = [col for col in str_columns if col not in date_columns]
-    df_to_show = df[numeric_columns + str_columns]
-    for col in date_columns[:1]:
-        df_to_show[col] = pd.to_datetime(df[col], errors="coerce")
-    if len(date_columns) > 0:
-        df_to_show = df_to_show.rename(columns={date_columns[0]: "index"}).set_index(
-            "index"
-        )
-        if len(str_columns) == 0:
-            st.line_chart(df_to_show)
-        elif len(str_columns) == 1 and len(numeric_columns) == 1:
-            st.line_chart(df_to_show, y=numeric_columns[0], color=str_columns[0])
-    elif len(str_columns) > 0:
-        df_to_show = df_to_show.rename(columns={str_columns[0]: "index"}).set_index(
-            "index"
-        )
-        if len(numeric_columns) == 1:
-            st.bar_chart(df_to_show)
-    elif len(numeric_columns) > 0:
-        st.bar_chart(df_to_show.transpose())
+    try:
+        # Bug in streamlit with dots in column names - update column names
+        updated_columns = {col: col.replace(".", "_") for col in df.columns}
+        df = df.rename(columns=updated_columns)
+        numeric_columns = list(df.select_dtypes(include=["number"]).columns)
+        if len(numeric_columns) == 0:
+            return
+        # Bug in snowflake connector - does not set date types correctly in pandas, so manually detecting
+        date_columns = [
+            "date_date",
+            "date_week",
+            "date_month",
+            "date_year",
+            "date_quarter",
+        ]
+        # Filter columns that match the specific names and exist in the DataFrame
+        date_columns = list(df.columns.intersection(date_columns))
+        str_columns = df.select_dtypes(include=["object"]).columns
+        str_columns = [col for col in str_columns if col not in date_columns]
+        df_to_show = df[numeric_columns + str_columns]
+        for col in date_columns[:1]:
+            df_to_show[col] = pd.to_datetime(df[col], errors="coerce")
+        if len(date_columns) > 0:
+            df_to_show = df_to_show.rename(
+                columns={date_columns[0]: "index"}
+            ).set_index("index")
+            if len(str_columns) == 0:
+                st.line_chart(df_to_show)
+            elif len(str_columns) == 1 and len(numeric_columns) == 1:
+                st.line_chart(df_to_show, y=numeric_columns[0], color=str_columns[0])
+        elif len(str_columns) > 0:
+            df_to_show = df_to_show.rename(columns={str_columns[0]: "index"}).set_index(
+                "index"
+            )
+            if len(numeric_columns) == 1:
+                st.bar_chart(df_to_show)
+        elif len(numeric_columns) > 0:
+            st.bar_chart(df_to_show.transpose())
+    except Exception:
+        pass
 
 
 ## Functions to process the LLM response
@@ -302,8 +318,7 @@ def process_response(response):
         # Use Semantic Layer to get SQL for the data
         native_app_sql = f"""
                 select {HONEYDEW_APP}.API.GET_SQL_FOR_FIELDS(
-                '{WORKSPACE}','{BRANCH}',
-                NULL,
+                '{WORKSPACE}','{BRANCH}', '{AI_DOMAIN}',
                 {format_as_list(resp_val, 'group_by')},
                 {format_as_list(resp_val, 'metrics')},
                 {format_as_list(resp_val, 'filters')}
@@ -326,7 +341,7 @@ def process_response(response):
                     sql += f"\nORDER BY {dates}"
 
             # Too many rows are not needed
-            sql += "\nLIMIT 500"
+            sql += f"\nLIMIT {RESULTS_LIMIT}"
 
         except Exception as e:
             # If bad semantic query (for example LLM hallucinated a field) - ignore and continue
