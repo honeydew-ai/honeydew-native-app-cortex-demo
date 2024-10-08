@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import re
 import datetime
+import altair as alt
 
 from snowflake.snowpark.context import get_active_session
 
@@ -245,47 +246,97 @@ def write_explain(response):
     st.markdown(s)
 
 
-def make_chart(df):
-    try:
-        # Bug in streamlit with dots in column names - update column names
-        updated_columns = {col: col.replace(".", "_") for col in df.columns}
-        df = df.rename(columns=updated_columns)
-        numeric_columns = list(df.select_dtypes(include=["number"]).columns)
-        if len(numeric_columns) == 0:
-            return
-        # Bug in snowflake connector - does not set date types correctly in pandas, so manually detecting
-        date_columns = [
-            "date_date",
-            "date_week",
-            "date_month",
-            "date_year",
-            "date_quarter",
-        ]
-        # Filter columns that match the specific names and exist in the DataFrame
-        date_columns = list(df.columns.intersection(date_columns))
-        str_columns = df.select_dtypes(include=["object"]).columns
-        str_columns = [col for col in str_columns if col not in date_columns]
-        df_to_show = df[numeric_columns + str_columns]
-        for col in date_columns[:1]:
-            df_to_show[col] = pd.to_datetime(df[col], errors="coerce")
-        if len(date_columns) > 0:
-            df_to_show = df_to_show.rename(
-                columns={date_columns[0]: "index"}
-            ).set_index("index")
-            if len(str_columns) == 0:
-                st.line_chart(df_to_show)
-            elif len(str_columns) == 1 and len(numeric_columns) == 1:
-                st.line_chart(df_to_show, y=numeric_columns[0], color=str_columns[0])
-        elif len(str_columns) > 0:
-            df_to_show = df_to_show.rename(columns={str_columns[0]: "index"}).set_index(
-                "index"
+def get_possible_date_columns(df):
+    date_columns = []
+    for col in df.select_dtypes(include="object").columns:
+        try:
+            # Try converting the column to datetime
+            df[col] = pd.to_datetime(
+                df[col], errors="raise", infer_datetime_format=True
             )
-            if len(numeric_columns) == 1:
-                st.bar_chart(df_to_show)
-        elif len(numeric_columns) > 0:
-            st.bar_chart(df_to_show.transpose())
-    except Exception:
-        pass
+            # If successful, record the column as a date column
+            date_columns.append(col)
+        except (ValueError, TypeError):
+            # If conversion fails, the column is not a date
+            pass
+    return date_columns
+
+
+def create_grouped_bar_chart(df, str_columns, numeric_columns):
+    if len(str_columns) > 2:
+        return
+
+    params = {}
+    if len(str_columns) == 2:
+        params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
+        # params["y"] = alt.Y('Value:Q', stack='zero')
+        params["color"] = (
+            "Series:N" if len(numeric_columns) > 1 else f"{str_columns[1]}:N"
+        )
+        if len(numeric_columns) > 1:
+            params["column"] = f"{str_columns[1]}:N"
+    else:
+        params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
+        params["color"] = (
+            "Series:N" if len(numeric_columns) > 1 else f"{str_columns[0]}:N"
+        )
+
+    if len(numeric_columns) == 1:
+        params["y"] = alt.Y("Value:Q", title=numeric_columns[0])
+    else:
+        params["y"] = alt.Y("Value:Q")
+        params["xOffset"] = alt.XOffset("Series:N")
+
+    # Melt the DataFrame to convert wide format into long format for grouped bars
+    df_melted = df.melt(
+        id_vars=str_columns,
+        value_vars=numeric_columns,
+        var_name="Series",
+        value_name="Value",
+    )
+    # Create the Altair grouped bar chart using the index as the x-axis
+    chart = (
+        alt.Chart(df_melted)
+        .mark_bar()
+        .encode(**params)
+        .resolve_scale(y="shared")  # Ensure that y-axes across columns are shared
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+
+def make_chart(df):
+    # Bug in streamlit with dots in column names - update column names
+    updated_columns = {col: col.replace(".", "_") for col in df.columns}
+    df = df.rename(columns=updated_columns)
+    numeric_columns = list(df.select_dtypes(include=["number"]).columns)
+    if len(numeric_columns) == 0:
+        return
+    # Bug in snowflake connector - does not set date types correctly in pandas, so manually detecting
+    date_columns = get_possible_date_columns(df)
+    str_columns = df.select_dtypes(include=["object"]).columns
+    str_columns = [col for col in str_columns if col not in date_columns]
+    df_to_show = df[numeric_columns + str_columns]
+    for col in date_columns[:1]:
+        df_to_show[col] = pd.to_datetime(df[col], errors="coerce")
+    if len(date_columns) > 0:
+        df_to_show = df_to_show.rename(columns={date_columns[0]: "index"}).set_index(
+            "index"
+        )
+        if len(str_columns) == 0:
+            st.line_chart(df_to_show)
+        elif len(str_columns) == 1 and len(numeric_columns) == 1:
+            st.line_chart(df_to_show, y=numeric_columns[0], color=str_columns[0])
+    elif len(str_columns) >= 1:
+        create_grouped_bar_chart(df_to_show, str_columns, numeric_columns)
+    elif len(numeric_columns) > 1:
+        create_grouped_bar_chart(df_to_show, [numeric_columns[0]], numeric_columns[1:])
+    elif len(numeric_columns) == 1:
+        if len(df_to_show) == 1:
+            value = "{:,}".format(df[numeric_columns[0]].iloc[0])
+            st.metric(label=numeric_columns[0], value=value)
+        else:
+            st.bar_chart(df_to_show)
 
 
 ## Functions to process the LLM response
