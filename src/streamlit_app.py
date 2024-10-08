@@ -377,7 +377,7 @@ def process_response(response):
         # Use Semantic Layer to get SQL for the data
         native_app_sql = f"""
                 select {HONEYDEW_APP}.API.GET_SQL_FOR_FIELDS(
-                '{WORKSPACE}','{BRANCH}', '{AI_DOMAIN}',
+                '{WORKSPACE}', '{BRANCH}', '{AI_DOMAIN}',
                 {format_as_list(resp_val, 'group_by')},
                 {format_as_list(resp_val, 'metrics')},
                 {format_as_list(resp_val, 'filters')}
