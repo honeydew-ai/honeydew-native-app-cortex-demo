@@ -413,12 +413,7 @@ def process_response(response):
     return None, None
 
 
-########## Main flow
-
-
-user_question = st.chat_input("Ask a question about the data")
-
-if user_question:
+def process_user_question(user_question):
     df = None
     resp_val = None
 
@@ -458,6 +453,15 @@ if user_question:
             st.code(sql)
     else:
         st.markdown(message)
+
+
+########## Main flow
+
+
+user_question = st.chat_input("Ask a question about the data")
+
+if user_question:
+    process_user_question(user_question)
 
 if st.button("Reload Schema"):
     st.cache_data.clear()
