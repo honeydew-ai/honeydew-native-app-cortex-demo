@@ -305,7 +305,7 @@ def create_grouped_bar_chart(df, str_columns, numeric_columns):
     st.altair_chart(chart, use_container_width=True)
 
 
-def make_chart(df):
+def make_chart_inner(df):
     # Bug in streamlit with dots in column names - update column names
     updated_columns = {col: col.replace(".", "_") for col in df.columns}
     df = df.rename(columns=updated_columns)
@@ -337,6 +337,14 @@ def make_chart(df):
             st.metric(label=numeric_columns[0], value=value)
         else:
             st.bar_chart(df_to_show)
+
+
+def make_chart(df):
+    try:
+        make_chart_inner(df)
+    except Exception as exp:
+        if DEBUG:
+            st.code(f"Failed generating chart:\n{exp}")
 
 
 ## Functions to process the LLM response
