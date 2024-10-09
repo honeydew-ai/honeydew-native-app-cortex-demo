@@ -24,7 +24,7 @@ DEBUG = 0
 
 
 ## Cortex LLM Model to use
-CORTEX_LLM = "mistral-large"
+CORTEX_LLM = "mistral-large2"
 
 ## Results limit
 RESULTS_LIMIT = 10000
@@ -472,7 +472,7 @@ def show_query_result(parent, df, resp_val, sql):
         write_explain(st, resp_val)
 
     with hd_sql_tab:
-        st.markdown(f"```sql\n{sql}```")
+        st.markdown(f"```sql\n{sql}\n```")
 
 
 def append_content(parent, content, arr):
