@@ -137,6 +137,8 @@ class TYPES:
     MARKDOWN = "markdown"
 
 
+HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
+
 ##### Application
 
 session = get_active_session()
@@ -234,23 +236,28 @@ def supress_failures(func):
             if DEBUG:
                 st.code(f"Failed {func.__name__}:\n{exp}")
             return None
+
     return func_without_errors
 
 
 def make_link(text, entity, name, val_type):
     return f"[{text}](https://app.honeydew.cloud/workspace/{WORKSPACE}/version/{BRANCH}/entity/{entity}/{val_type}/{name})"
 
+
 @supress_failures
 def get_description(schema, val):
-    entity, name = val.split('.')
+    entity, name = val.split(".")
     row_df = schema[(schema["ENTITY"] == entity) & (schema["NAME"] == name)]
     assert len(row_df) == 1, f"field {val} not found in schema"
     row = row_df.iloc[0].to_dict()
-    val_type = 'metric' if row["TYPE"] == 'Metric' else 'attribute'
+    val_type = "metric" if row["TYPE"] == "Metric" else "attribute"
     display_name = row["DISPLAY_NAME"] if row["DISPLAY_NAME"] is not None else val
-    description = f'\n\n    {row["DESCRIPTION"]}' if row["DESCRIPTION"] is not None else ""
+    description = (
+        f'\n\n    {row["DESCRIPTION"]}' if row["DESCRIPTION"] is not None else ""
+    )
     link = make_link(display_name, entity, name, val_type)
     return f" * {link}{description}"
+
 
 @supress_failures
 def write_explain(parent, response):
@@ -259,12 +266,14 @@ def write_explain(parent, response):
     if response.get("group_by"):
         s += """
 \n**Attributes**
-""" + "\n".join(get_description(schema, val) for val in response["group_by"]
+""" + "\n".join(
+            get_description(schema, val) for val in response["group_by"]
         )
     if response.get("metrics"):
         s += """
 \n**Metrics**
-""" + "\n".join(get_description(schema, val) for val in response["metrics"]
+""" + "\n".join(
+            get_description(schema, val) for val in response["metrics"]
         )
     if response.get("filters"):
         s += """
@@ -275,7 +284,9 @@ def write_explain(parent, response):
 
     parent.markdown(s)
 
+
 ## Visualization widget helper functions
+
 
 def get_possible_date_columns(df):
     date_columns = []
@@ -335,6 +346,7 @@ def create_grouped_bar_chart(df, str_columns, numeric_columns):
 
     st.altair_chart(chart, use_container_width=True)
 
+
 @supress_failures
 def make_chart(df):
     # Bug in streamlit with dots in column names - update column names
@@ -369,7 +381,9 @@ def make_chart(df):
         else:
             st.bar_chart(df_to_show)
 
+
 ## Functions to process the LLM response
+
 
 def replace_parameters(sql):
     if not SUPPORT_PARAMETERS:
@@ -438,6 +452,7 @@ def process_response(response):
 
 ########## Content control
 
+
 # @st.fragment()
 def show_query_result(parent, df, resp_val, sql):
     data_tab, explain_tab, hd_sql_tab = parent.tabs(["Data", "Explain", "SQL"])
@@ -462,23 +477,25 @@ def show_query_result(parent, df, resp_val, sql):
 
 def append_content(parent, content, arr):
 
-    if (arr != None):
+    if arr != None:
         arr.append(content)
 
-    if (content["debug"] and not DEBUG):
+    if content["debug"] and not DEBUG:
         return
 
-    if (content["type"] == TYPES.INIT):
-        if content["role"] == 'assistant':
-            avatar = 'https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg'
-        elif content["role"] == 'user':
+    if content["type"] == TYPES.INIT:
+        if content["role"] == "assistant":
+            avatar = HONEYDEW_ICON_URL
+        elif content["role"] == "user":
             avatar = "🧑‍💻"
+        else:
+            avatar = None
         parent = parent.chat_message(content["role"], avatar=avatar)
 
-    if (content["text"] != None):
+    if content["text"] != None:
         parent.markdown(content["text"])
 
-    if (content["type"] == TYPES.QUERY_RESULT):
+    if content["type"] == TYPES.QUERY_RESULT:
         df = content["data"]
         resp_val = content["hd_resp"]
         sql = content["hd_sql"]
@@ -488,9 +505,28 @@ def append_content(parent, content, arr):
 
 
 def process_user_question(user_question):
-    append_content(parent=st, arr=st.session_state.content, content = { "type": TYPES.INIT, "role": "user", "debug": False, "text": user_question});
-    lmnt = append_content(parent=st, arr=st.session_state.content, content = { "type": TYPES.INIT, "role": "assistant", "debug": False, "text": "Processing"});
+    append_content(
+        parent=st,
+        arr=st.session_state.content,
+        content={
+            "type": TYPES.INIT,
+            "role": "user",
+            "debug": False,
+            "text": user_question,
+        },
+    )
+    lmnt = append_content(
+        parent=st,
+        arr=st.session_state.content,
+        content={
+            "type": TYPES.INIT,
+            "role": "assistant",
+            "debug": False,
+            "text": "Processing",
+        },
+    )
     run_query_flow(prompt=user_question, parent=lmnt)
+
 
 def run_query_flow(prompt, parent):
     container = parent.container()
@@ -507,24 +543,32 @@ def run_query_flow(prompt, parent):
     stat.update(label="Generating Semantic Query.. (2/4)", state="running")
     response = run_cortex(sys_prompt, user_question)
     message = response["choices"][0]["messages"]
-    append_content(parent=container,
-            content = {
-                "type": TYPES.MARKDOWN, "role": "assistant", "debug": True,
-                "text": f"Semantic Query \n```sql\n{message}\n```",
-            },
-            arr=st.session_state.content)
+    append_content(
+        parent=container,
+        content={
+            "type": TYPES.MARKDOWN,
+            "role": "assistant",
+            "debug": True,
+            "text": f"Semantic Query \n```sql\n{message}\n```",
+        },
+        arr=st.session_state.content,
+    )
 
     ## Process LLM response
     sql, resp_val = process_response(message)
 
     if sql is not None:
         stat.update(label="Compiling SQL.. (3/4)", state="running")
-        append_content(parent=container,
-                content = {
-                    "type": TYPES.MARKDOWN, "role": "assistant", "debug": True,
-                    "text": f"SQL \n```sql\n{sql}\n```",
-                },
-                arr=st.session_state.content)
+        append_content(
+            parent=container,
+            content={
+                "type": TYPES.MARKDOWN,
+                "role": "assistant",
+                "debug": True,
+                "text": f"SQL \n```sql\n{sql}\n```",
+            },
+            arr=st.session_state.content,
+        )
 
         stat.update(label="Runninq Query.. (4/4)", state="running")
         df = session.sql(sql).to_pandas()
@@ -532,25 +576,30 @@ def run_query_flow(prompt, parent):
     stat.update(label="Completed", state="complete")
 
     if sql is not None:
-        append_content(parent=container,
-                content = {
-                        "type": TYPES.QUERY_RESULT,
-                        "text": f"Query Result:",
-                        "data": df,
-                        "hd_resp": resp_val,
-                        "hd_sql" : sql,
-                        "role": "assistant",
-                        "debug": False
-                    },
-                    arr=st.session_state.content)
+        append_content(
+            parent=container,
+            content={
+                "type": TYPES.QUERY_RESULT,
+                "text": f"Query Result:",
+                "data": df,
+                "hd_resp": resp_val,
+                "hd_sql": sql,
+                "role": "assistant",
+                "debug": False,
+            },
+            arr=st.session_state.content,
+        )
     else:
-        append_content(parent=container,
-           content = {
-                "type": TYPES.MARKDOWN, "role": "assistant", "debug": False,
+        append_content(
+            parent=container,
+            content={
+                "type": TYPES.MARKDOWN,
+                "role": "assistant",
+                "debug": False,
                 "text": message,
             },
-            arr=st.session_state.content)
-
+            arr=st.session_state.content,
+        )
 
 
 ########## Main flow
@@ -563,13 +612,17 @@ st.markdown(f"Semantic Model: `{WORKSPACE}` on branch `{BRANCH}`")
 
 
 parent = st
-# Display chat history
-# for content_item in st.session_state.content:
-#     if (content_item["type"] == TYPES.INIT):
-#         parent = append_content(parent=st, content=content_item, arr=None)
 
-#     else:
-#         append_content(parent=parent, content=content_item, arr=None)
+# Display chat history
+_HISTORY_ENABLED = False
+
+if _HISTORY_ENABLED:
+    for content_item in st.session_state.content:
+        if content_item["type"] == TYPES.INIT:
+            parent = append_content(parent=st, content=content_item, arr=None)
+
+        else:
+            append_content(parent=parent, content=content_item, arr=None)
 
 user_question = st.chat_input("Ask a question about the data")
 
