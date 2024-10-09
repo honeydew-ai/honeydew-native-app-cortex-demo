@@ -129,6 +129,14 @@ User input follows:
 
 """
 
+
+class TYPES:
+    QUERY_RESULT = "data"
+    INIT = "init"
+    SQL = "sql"
+    MARKDOWN = "markdown"
+
+
 ##### Application
 
 session = get_active_session()
@@ -137,14 +145,13 @@ session = get_active_session()
 ## Load Schema from Honeydew
 @st.cache_data
 def get_schema():
-    st.write("Loading Schema")
     ## Load the AI domain only
     data = session.sql(
         f"""
 with
  entities as (select entities from table({HONEYDEW_APP}.API.SHOW_DOMAINS('{WORKSPACE}','{BRANCH}')) where name='{AI_DOMAIN}'),
  entities_unnest as (select f.value:name::varchar as name, f.value:fields::array(varchar) as fields from entities e, LATERAL FLATTEN(input => e.entities) f),
- domain_fields as (select entity, fields.name, type, datatype, description from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}')) fields
+ domain_fields as (select entity, fields.name, type, datatype, description, display_name from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}')) fields
    JOIN  entities_unnest
    ON fields.entity = entities_unnest.name and (entities_unnest.fields is null or array_contains(fields.name, entities_unnest.fields)))
 select * from domain_fields
@@ -198,17 +205,16 @@ def escape_quote(str):
 
 
 def run_cortex(sys_prompt, user_question, model=CORTEX_LLM, temperature=0.2):
-    with st.spinner("Asking AI..."):
-        data = get_single_sql_with_debug(
-            f"""
-        SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}',
-        [
-            {{'role':'system', 'content': '{escape_quote(sys_prompt)}'}},
-            {{'role':'user', 'content': '{escape_quote(user_question)}'}}
-        ],
-        {{'temperature': {temperature}, 'max_tokens': 500}}) """
-        )
-        return json.loads(data)
+    data = get_single_sql_with_debug(
+        f"""
+    SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}',
+    [
+        {{'role':'system', 'content': '{escape_quote(sys_prompt)}'}},
+        {{'role':'user', 'content': '{escape_quote(user_question)}'}}
+    ],
+    {{'temperature': {temperature}, 'max_tokens': 500}}) """
+    )
+    return json.loads(data)
 
 
 ## Explanation widget helper functions
@@ -220,31 +226,56 @@ def format_as_list(response, key):
     return "[" + ", ".join(f"'{escape_quote(val)}'" for val in response[key]) + "]"
 
 
-def write_explain(response):
+def supress_failures(func):
+    def func_without_errors(*args, **kw):
+        try:
+            return func(*args, **kw)
+        except Exception as exp:
+            if DEBUG:
+                st.code(f"Failed {func.__name__}:\n{exp}")
+            return None
+    return func_without_errors
+
+
+def make_link(text, entity, name, val_type):
+    return f"[{text}](https://app.honeydew.cloud/workspace/{WORKSPACE}/version/{BRANCH}/entity/{entity}/{val_type}/{name})"
+
+@supress_failures
+def get_description(schema, val):
+    entity, name = val.split('.')
+    row_df = schema[(schema["ENTITY"] == entity) & (schema["NAME"] == name)]
+    assert len(row_df) == 1, f"field {val} not found in schema"
+    row = row_df.iloc[0].to_dict()
+    val_type = 'metric' if row["TYPE"] == 'Metric' else 'attribute'
+    display_name = row["DISPLAY_NAME"] if row["DISPLAY_NAME"] is not None else val
+    description = f'\n\n    {row["DESCRIPTION"]}' if row["DESCRIPTION"] is not None else ""
+    link = make_link(display_name, entity, name, val_type)
+    return f" * {link}{description}"
+
+@supress_failures
+def write_explain(parent, response):
+    schema = get_schema()
     s = ""
     if response.get("group_by"):
         s += """
-* Attributes
-""" + "\n".join(
-            f"  * [{val}](https://app.honeydew.cloud/workspace/{WORKSPACE}/version/{BRANCH}/entity/{val.split('.')[0]}/attribute/{val.split('.')[1]})"
-            for val in response["group_by"]
+\n**Attributes**
+""" + "\n".join(get_description(schema, val) for val in response["group_by"]
         )
     if response.get("metrics"):
         s += """
-* Metrics
-""" + "\n".join(
-            f"  * [{val}](https://app.honeydew.cloud/workspace/{WORKSPACE}/version/{BRANCH}/entity/{val.split('.')[0]}/metric/{val.split('.')[1]})"
-            for val in response["metrics"]
+\n**Metrics**
+""" + "\n".join(get_description(schema, val) for val in response["metrics"]
         )
     if response.get("filters"):
         s += """
-* Filters
+\n**Filters**
 """ + "\n".join(
             f"  * `{val}`" for val in response["filters"]
         )
 
-    st.markdown(s)
+    parent.markdown(s)
 
+## Visualization widget helper functions
 
 def get_possible_date_columns(df):
     date_columns = []
@@ -304,8 +335,8 @@ def create_grouped_bar_chart(df, str_columns, numeric_columns):
 
     st.altair_chart(chart, use_container_width=True)
 
-
-def make_chart_inner(df):
+@supress_failures
+def make_chart(df):
     # Bug in streamlit with dots in column names - update column names
     updated_columns = {col: col.replace(".", "_") for col in df.columns}
     df = df.rename(columns=updated_columns)
@@ -338,16 +369,8 @@ def make_chart_inner(df):
         else:
             st.bar_chart(df_to_show)
 
-
-def make_chart(df):
-    try:
-        make_chart_inner(df)
-    except Exception as exp:
-        if DEBUG:
-            st.code(f"Failed generating chart:\n{exp}")
-
-
 ## Functions to process the LLM response
+
 def replace_parameters(sql):
     if not SUPPORT_PARAMETERS:
         return sql
@@ -413,33 +436,15 @@ def process_response(response):
     return None, None
 
 
-def process_user_question(user_question):
-    df = None
-    resp_val = None
+########## Content control
 
-    # Run LLM on user question
-    with st.status("Asking Honeydew  ..."):
-        sys_prompt = build_sys_prompt()
-        st.write("Generating Semantic Query")
-        response = run_cortex(sys_prompt, user_question)
-        message = response["choices"][0]["messages"]
-        if DEBUG:
-            st.code(message)
-        st.write("Compiling SQL")
+# @st.fragment()
+def show_query_result(parent, df, resp_val, sql):
+    data_tab, explain_tab, hd_sql_tab = parent.tabs(["Data", "Explain", "SQL"])
 
-        ## Process LLM response
-        sql, resp_val = process_response(message)
-
-        ## If LLM generated a semantic query - run its SQL
-        if sql is not None:
-            st.write("Running Query")
-            df = session.sql(sql).to_pandas()
-
-    # Show response (data or markdown based on answer)
-    st.subheader(user_question, divider=True)
-    if df is not None:
+    with data_tab:
         make_chart(df)
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df)
         csv = convert_df(df)
         st.download_button(
             label="Download data as CSV",
@@ -447,16 +452,124 @@ def process_user_question(user_question):
             file_name="data.csv",
             mime="text/csv",
         )
-        with st.expander("Explain", expanded=True):
-            write_explain(resp_val)
-        with st.expander("See Snowflake SQL"):
-            st.code(sql)
+
+    with explain_tab:
+        write_explain(st, resp_val)
+
+    with hd_sql_tab:
+        st.markdown(f"```sql\n{sql}```")
+
+
+def append_content(parent, content, arr):
+
+    if (arr != None):
+        arr.append(content)
+
+    if (content["debug"] and not DEBUG):
+        return
+
+    if (content["type"] == TYPES.INIT):
+        if content["role"] == 'assistant':
+            avatar = 'https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg'
+        elif content["role"] == 'user':
+            avatar = "🧑‍💻"
+        parent = parent.chat_message(content["role"], avatar=avatar)
+
+    if (content["text"] != None):
+        parent.markdown(content["text"])
+
+    if (content["type"] == TYPES.QUERY_RESULT):
+        df = content["data"]
+        resp_val = content["hd_resp"]
+        sql = content["hd_sql"]
+        show_query_result(parent, df, resp_val, sql)
+
+    return parent
+
+
+def process_user_question(user_question):
+    append_content(parent=st, arr=st.session_state.content, content = { "type": TYPES.INIT, "role": "user", "debug": False, "text": user_question});
+    lmnt = append_content(parent=st, arr=st.session_state.content, content = { "type": TYPES.INIT, "role": "assistant", "debug": False, "text": "Processing"});
+    run_query_flow(prompt=user_question, parent=lmnt)
+
+def run_query_flow(prompt, parent):
+    container = parent.container()
+    stat_parent = parent.empty()
+    stat = stat_parent.status(label="Initializing..", state="running")
+
+    df = None
+    resp_val = None
+
+    # Run LLM on user question
+    stat.update(label="Loading Schema.. (1/4)", state="running")
+    sys_prompt = build_sys_prompt()
+
+    stat.update(label="Generating Semantic Query.. (2/4)", state="running")
+    response = run_cortex(sys_prompt, user_question)
+    message = response["choices"][0]["messages"]
+    append_content(parent=container,
+            content = {
+                "type": TYPES.MARKDOWN, "role": "assistant", "debug": True,
+                "text": f"Semantic Query \n```sql\n{message}\n```",
+            },
+            arr=st.session_state.content)
+
+    ## Process LLM response
+    sql, resp_val = process_response(message)
+
+    if sql is not None:
+        stat.update(label="Compiling SQL.. (3/4)", state="running")
+        append_content(parent=container,
+                content = {
+                    "type": TYPES.MARKDOWN, "role": "assistant", "debug": True,
+                    "text": f"SQL \n```sql\n{sql}\n```",
+                },
+                arr=st.session_state.content)
+
+        stat.update(label="Runninq Query.. (4/4)", state="running")
+        df = session.sql(sql).to_pandas()
+
+    stat.update(label="Completed", state="complete")
+
+    if sql is not None:
+        append_content(parent=container,
+                content = {
+                        "type": TYPES.QUERY_RESULT,
+                        "text": f"Query Result:",
+                        "data": df,
+                        "hd_resp": resp_val,
+                        "hd_sql" : sql,
+                        "role": "assistant",
+                        "debug": False
+                    },
+                    arr=st.session_state.content)
     else:
-        st.markdown(message)
+        append_content(parent=container,
+           content = {
+                "type": TYPES.MARKDOWN, "role": "assistant", "debug": False,
+                "text": message,
+            },
+            arr=st.session_state.content)
+
 
 
 ########## Main flow
 
+if "content" not in st.session_state:
+    st.session_state.content = []
+
+st.title("Honeydew Analyst")
+st.markdown(f"Semantic Model: `{WORKSPACE}` on branch `{BRANCH}`")
+
+
+parent = st
+# Display chat history
+# for content_item in st.session_state.content:
+#     if (content_item["type"] == TYPES.INIT):
+#         parent = append_content(parent=st, content=content_item, arr=None)
+
+#     else:
+#         append_content(parent=parent, content=content_item, arr=None)
 
 user_question = st.chat_input("Ask a question about the data")
 
