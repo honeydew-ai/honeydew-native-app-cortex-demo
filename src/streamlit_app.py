@@ -149,15 +149,7 @@ session = get_active_session()
 def get_schema():
     ## Load the AI domain only
     data = session.sql(
-        f"""
-with
- entities as (select entities from table({HONEYDEW_APP}.API.SHOW_DOMAINS('{WORKSPACE}','{BRANCH}')) where name='{AI_DOMAIN}'),
- entities_unnest as (select f.value:name::varchar as name, f.value:fields::array(varchar) as fields from entities e, LATERAL FLATTEN(input => e.entities) f),
- domain_fields as (select entity, fields.name, type, datatype, description, display_name from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}')) fields
-   JOIN  entities_unnest
-   ON fields.entity = entities_unnest.name and (entities_unnest.fields is null or array_contains(fields.name, entities_unnest.fields)))
-select * from domain_fields
-"""
+        f"select * from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}','{AI_DOMAIN}'))"
     )
     return data.to_pandas()
 
