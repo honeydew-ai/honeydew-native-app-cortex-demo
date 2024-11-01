@@ -293,11 +293,14 @@ def get_schema() -> pd.DataFrame:
 
 # Load Parameter default values from Honeydew
 @st.cache_data
-def get_parameters() -> list[dict[str, str]]:
+def get_parameters() -> typing.List[typing.Dict[str, str]]:
     data = session.sql(
         f"select * from table({HONEYDEW_APP}.API.SHOW_GLOBAL_PARAMETERS('{WORKSPACE}','{BRANCH}'))",
     )
-    return typing.cast(list[dict[str, str]], data.to_pandas().to_dict("records"))
+    return typing.cast(
+        typing.List[typing.Dict[str, str]],
+        data.to_pandas().to_dict("records"),
+    )
 
 
 @st.cache_data
@@ -314,7 +317,7 @@ def make_list_from_schema(schema: pd.DataFrame) -> str:
     )
 
 
-def get_display_description(val: dict[str, str]) -> str:
+def get_display_description(val: typing.Dict[str, str]) -> str:
     return f'{val["DESCRIPTION"]}' if val["DESCRIPTION"] is not None else ""
 
 
@@ -396,7 +399,7 @@ def get_description(schema: typing.Any, val: str) -> str:
 
 
 @supress_failures
-def write_explain(parent: typing.Any, response: dict[str, typing.Any]) -> None:
+def write_explain(parent: typing.Any, response: typing.Dict[str, typing.Any]) -> None:
     schema = get_schema()
     s = ""
     if response.get("group_by"):
@@ -431,7 +434,7 @@ def write_explain(parent: typing.Any, response: dict[str, typing.Any]) -> None:
 # Visualization widget helper functions
 
 
-def get_possible_date_columns(df: pd.DataFrame) -> list[str]:
+def get_possible_date_columns(df: pd.DataFrame) -> typing.List[str]:
     date_columns = []
     for col in df.select_dtypes(include="object").columns:
         try:
@@ -451,8 +454,8 @@ def get_possible_date_columns(df: pd.DataFrame) -> list[str]:
 
 def create_grouped_bar_chart(
     df: pd.DataFrame,
-    str_columns: list[str],
-    numeric_columns: list[str],
+    str_columns: typing.List[str],
+    numeric_columns: typing.List[str],
 ) -> None:
     if len(str_columns) > 2:
         return
@@ -541,7 +544,7 @@ def make_chart(df: pd.DataFrame) -> None:
 
 
 def run_tests() -> None:
-    questions: list[str] = [
+    questions: typing.List[str] = [
         # Place your test questions here
     ]
 
@@ -568,9 +571,9 @@ def replace_parameters(sql: str) -> str:
 def process_response(
     response: typing.Any,
     container: typing.Any,
-) -> tuple[str | None, dict[str, typing.Any] | None]:
+) -> typing.Tuple[str | None, typing.Dict[str, typing.Any] | None]:
 
-    def format_as_list(response: dict[str, typing.Any], key: str) -> str:
+    def format_as_list(response: typing.Dict[str, typing.Any], key: str) -> str:
         if key not in response:
             return "[]"
 
@@ -670,7 +673,7 @@ def process_response(
 def show_query_result(
     parent: typing.Any,
     df: pd.DataFrame,
-    resp_val: dict[str, typing.Any],
+    resp_val: typing.Dict[str, typing.Any],
     sql: str,
 ) -> None:
     chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(
@@ -701,7 +704,7 @@ def show_query_result(
 def append_content(
     parent: typing.Any,
     content: typing.Any,
-    arr: list[typing.Any] | None,
+    arr: typing.List[typing.Any] | None,
 ) -> typing.Any:
 
     if arr is not None:
