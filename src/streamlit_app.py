@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import time
 import re
 import uuid
 import datetime
@@ -14,19 +15,21 @@ from snowflake.snowpark.context import get_active_session
 HONEYDEW_APP = "HONEYDEW_APP"
 
 ## Honeydew workspace and branch
-WORKSPACE = "tpch_demo"
+WORKSPACE = "tasty_bytes"
 BRANCH = "prod"
 
 ## Add it to a domain to set what is exposed to LLMs
 AI_DOMAIN = "llm"
 
+RUN_TESTS = 0
+
 ## Set to '1' to see sent queries
 PRINT_SQL_QUERY = 0
-PRINT_JSON_QUERY = 0
+PRINT_JSON_QUERY = 1
 
 ## Cortex LLM Model to use
-CORTEX_LLM = "llama3.1-405b"
 # CORTEX_LLM = "mistral-large2"
+CORTEX_LLM = "llama3.1-405b"
 
 ## Results limit
 RESULTS_LIMIT = 10000
@@ -81,7 +84,7 @@ Determine if this a question about schema or data.
 ```json
 {{
   "group_by": ["entity.attribute_name"],
-  "metrics": ["entity.metric_name"],
+  "metrics": ["entity.metric_name"],  // optional, only add the 'metrics' attribute when metrics are requested
   "filters": [], // optional, only add the 'filters' attribute when filtering
   "order": "ORDER BY \"entity.metric_or_attribute_name\" ASC/DESC LIMIT x" // optional, only when top/bottom/last/first filters applied
 }}
@@ -118,6 +121,7 @@ Use following Snowflake SQL functions for dates:
 
 ### metrics:
 * may choose only from the schema metrics
+* can be empty - don't add a default metric if not explicitly asked for 
 
 ## Your Schema
 
@@ -224,25 +228,16 @@ Use following Snowflake SQL functions for dates:
 ```
 
 
-### Handling Aggregation Mismatches
-
-#### Example 6: Median Profit (Aggregation Mismatch)
-
-**User:** "What is the median profit?"
-
-**Response:** 
-*I've found the `total profit` metric but it uses `sum` aggregation.*
-
 ### Error Handling
 
-#### Example 7: Term Not Found
+#### Example 6: Term Not Found
 
 **User:** "Show me the Z-score of sales."
 
 **Response:** 
 *The requested metric `Z-score of sales` was not found.*
 
-#### Example 8: Attribute Not Found
+#### Example 7: Attribute Not Found
 
 **User:** "Sum sales by supplier location."
 
@@ -508,6 +503,20 @@ def make_chart(df):
             st.bar_chart(df_to_show)
 
 
+def run_tests():
+    questions = [
+        # Place your test questions here
+    ]
+
+    total = 0
+    for question in questions:
+
+        t = time.time()
+        process_user_question(question)
+        total += time.time() - t
+        st.text(f"\n\ntime: {time.time()-t:.1f} seconds\n---\n\n")
+
+
 def replace_parameters(sql):
     if not SUPPORT_PARAMETERS:
         return sql
@@ -519,13 +528,38 @@ def replace_parameters(sql):
     return sql
 
 
-def process_response(response):
+def process_response(response, container):
 
     def format_as_list(response, key):
         if key not in response:
             return "[]"
 
         return "[" + ", ".join(f"'{escape_quote(val)}'" for val in response[key]) + "]"
+
+    def extract_pre_json_text(text: str) -> str:
+        # Look for markdown JSON code block indicator
+        markers = ["```json", "```"]  # Handle both ```json and plain ``` markers
+
+        first_marker_pos = len(text)
+        for marker in markers:
+            pos = text.find(marker)
+            if pos != -1 and pos < first_marker_pos:
+                first_marker_pos = pos
+
+        return text[:first_marker_pos].rstrip()
+
+    message = extract_pre_json_text(response)
+
+    append_content(
+        parent=container,
+        content={
+            "type": TYPES.MARKDOWN,
+            "role": "assistant",
+            "debug": False,
+            "text": f"\n{message}\n",
+        },
+        arr=st.session_state.content,
+    )
 
     ### Parse LLM response to look for Honeydew queries
     for m in re.findall(r"```json\s*\n(.*?)\n\s*```", response, flags=re.DOTALL):
@@ -535,6 +569,17 @@ def process_response(response):
         except Exception as e:
             st.exception(f"Bad JSON: {m}")
             continue
+
+            append_content(
+                parent=container,
+                content={
+                    "type": TYPES.MARKDOWN,
+                    "role": "assistant",
+                    "debug": not PRINT_JSON_QUERY,
+                    "text": f"\n{m}\n",
+                },
+                arr=st.session_state.content,
+            )
 
         # Use Semantic Layer to get SQL for the data
         order_val = json_query.get("order")
@@ -582,9 +627,12 @@ def process_response(response):
 
 # @st.fragment()
 def show_query_result(parent, df, resp_val, sql):
-    data_tab, chart_tab, explain_tab, hd_sql_tab = parent.tabs(
-        ["Data", "Chart", "Explain", "SQL"]
+    chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(
+        ["Chart", "Data", "Explain", "SQL"]
     )
+
+    with chart_tab:
+        make_chart(df)
 
     with data_tab:
         st.dataframe(df)
@@ -596,9 +644,6 @@ def show_query_result(parent, df, resp_val, sql):
             file_name="data.csv",
             mime="text/csv",
         )
-
-    with chart_tab:
-        make_chart(df)
 
     with explain_tab:
         write_explain(st, resp_val)
@@ -675,19 +720,9 @@ def run_query_flow(user_question, parent):
     stat.update(label="Generating Query.. (2/4)", state="running")
     response = run_cortex(sys_prompt, user_question)
     message = response["choices"][0]["messages"]
-    append_content(
-        parent=container,
-        content={
-            "type": TYPES.MARKDOWN,
-            "role": "assistant",
-            "debug": not PRINT_JSON_QUERY,
-            "text": f"\n{message}\n",
-        },
-        arr=st.session_state.content,
-    )
 
     ## Process LLM response
-    sql, json_query = process_response(message)
+    sql, json_query = process_response(message, container)
 
     if sql is not None:
         stat.update(label="Compiling SQL.. (3/4)", state="running")
@@ -743,17 +778,24 @@ st.title("Honeydew Analyst")
 st.markdown(f"Semantic Model: `{WORKSPACE}` on branch `{BRANCH}`")
 
 parent = st
+
 # Display chat history
-for content_item in st.session_state.content:
-    if content_item["type"] == TYPES.INIT:
-        parent = append_content(parent=st, content=content_item, arr=None)
+_HISTORY_ENABLED = True
 
-    else:
-        append_content(parent=parent, content=content_item, arr=None)
+if _HISTORY_ENABLED
+    for content_item in st.session_state.content:
+        if content_item["type"] == TYPES.INIT:
+            parent = append_content(parent=st, content=content_item, arr=None)
+
+        else:
+            append_content(parent=parent, content=content_item, arr=None)
 
 
-if user_question := st.chat_input("Ask me.."):
-    process_user_question(user_question)
+if RUN_TESTS:
+    run_tests()
 
+else:
+    if user_question := st.chat_input("Ask me.."):
+        process_user_question(user_question)
 if st.button("Reload Schema"):
     st.cache_data.clear()
