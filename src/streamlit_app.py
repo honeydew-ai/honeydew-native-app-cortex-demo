@@ -269,7 +269,7 @@ User input follows:
 """  # noqa: E501
 
 
-class TYPES(enum.StrEnum):
+class TYPES(enum.Enum):
     QUERY_RESULT = "data"
     INIT = "init"
     SQL = "sql"
