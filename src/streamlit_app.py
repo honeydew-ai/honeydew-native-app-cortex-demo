@@ -571,7 +571,7 @@ def replace_parameters(sql: str) -> str:
 def process_response(
     response: typing.Any,
     container: typing.Any,
-) -> typing.Tuple[str | None, typing.Dict[str, typing.Any] | None]:
+) -> typing.Tuple[typing.Optional[str], typing.Optional[typing.Dict[str, typing.Any]]]:
 
     def format_as_list(response: typing.Dict[str, typing.Any], key: str) -> str:
         if key not in response:
@@ -704,7 +704,7 @@ def show_query_result(
 def append_content(
     parent: typing.Any,
     content: typing.Any,
-    arr: typing.List[typing.Any] | None,
+    arr: typing.Optional[typing.List[typing.Any]],
 ) -> typing.Any:
 
     if arr is not None:
