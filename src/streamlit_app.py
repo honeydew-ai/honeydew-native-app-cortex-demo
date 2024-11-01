@@ -285,7 +285,7 @@ session = get_active_session()
 
 # Load Schema from Honeydew
 @st.cache_data
-def get_schema():
+def get_schema() -> pd.DataFrame:
     # Load the AI domain only
     data = session.sql(
         f"select * from table({HONEYDEW_APP}.API.SHOW_FIELDS('{WORKSPACE}','{BRANCH}','{AI_DOMAIN}'))",
@@ -295,20 +295,20 @@ def get_schema():
 
 # Load Parameter default values from Honeydew
 @st.cache_data
-def get_parameters():
+def get_parameters() -> list[dict[str, str]]:
     data = session.sql(
         f"select * from table({HONEYDEW_APP}.API.SHOW_GLOBAL_PARAMETERS('{WORKSPACE}','{BRANCH}'))",
     )
-    return data.to_pandas().to_dict("records")
+    return typing.cast(list[dict[str, str]], data.to_pandas().to_dict("records"))
 
 
 @st.cache_data
-def convert_df(df):
-    return df.to_csv().encode("utf-8")
+def convert_df(df: pd.DataFrame) -> bytes:
+    return typing.cast(bytes, df.to_csv().encode("utf-8"))
 
 
 # Helper function for prompt building
-def make_list_from_schema(schema):
+def make_list_from_schema(schema: pd.DataFrame) -> str:
     return "\n".join(
         f"{val['ENTITY']}.{val['NAME']} ({val['DATATYPE']})"
         + get_display_description(val)
@@ -316,12 +316,12 @@ def make_list_from_schema(schema):
     )
 
 
-def get_display_description(val):
+def get_display_description(val: dict[str, str]) -> str:
     return f'{val["DESCRIPTION"]}' if val["DESCRIPTION"] is not None else ""
 
 
 # Build prompt from template + schema
-def build_sys_prompt():
+def build_sys_prompt() -> str:
     schema = get_schema()
     attrs = make_list_from_schema(schema.loc[schema["TYPE"] != "Metric"])
     metrics = make_list_from_schema(schema.loc[schema["TYPE"] == "Metric"])
@@ -329,13 +329,13 @@ def build_sys_prompt():
 
 
 # Cortex LLM wrapper functions
-def get_single_sql_with_debug(sql):
+def get_single_sql_with_debug(sql: str) -> str:
 
     data = session.sql(sql + "as response")
-    return data.collect()[0].as_dict()["RESPONSE"]
+    return typing.cast(str, data.collect()[0].as_dict()["RESPONSE"])
 
 
-def escape_quote(str_val):
+def escape_quote(str_val: str) -> str:
     str_val = re.sub(r"'+", "''", str_val, flags=re.S)
     return str_val
 
@@ -361,8 +361,10 @@ def run_cortex(
 # Explanation widget helper functions
 
 
-def supress_failures(func):
-    def func_without_errors(*args, **kw):
+def supress_failures(
+    func: typing.Callable[..., typing.Any],
+) -> typing.Callable[..., typing.Any]:
+    def func_without_errors(*args: typing.Any, **kw: typing.Any) -> typing.Any:
         try:
             return func(*args, **kw)
         except Exception as exp:  # pylint: disable=broad-exception-caught
@@ -431,7 +433,7 @@ def write_explain(parent: typing.Any, response: dict[str, typing.Any]) -> None:
 # Visualization widget helper functions
 
 
-def get_possible_date_columns(df):
+def get_possible_date_columns(df: pd.DataFrame) -> list[str]:
     date_columns = []
     for col in df.select_dtypes(include="object").columns:
         try:
@@ -449,7 +451,11 @@ def get_possible_date_columns(df):
     return date_columns
 
 
-def create_grouped_bar_chart(df, str_columns, numeric_columns):
+def create_grouped_bar_chart(
+    df: pd.DataFrame,
+    str_columns: list[str],
+    numeric_columns: list[str],
+) -> None:
     if len(str_columns) > 2:
         return
 
@@ -494,7 +500,7 @@ def create_grouped_bar_chart(df, str_columns, numeric_columns):
 
 
 @supress_failures
-def make_chart(df):
+def make_chart(df: pd.DataFrame) -> None:
     # Bug in streamlit with dots in column names - update column names
     updated_columns = {col: col.replace(".", "_") for col in df.columns}
     df = df.rename(columns=updated_columns)
@@ -536,12 +542,12 @@ def make_chart(df):
             st.bar_chart(df_to_show)
 
 
-def run_tests():
-    questions = [
+def run_tests() -> None:
+    questions: list[str] = [
         # Place your test questions here
     ]
 
-    total = 0
+    total: float = 0
     for question in questions:
 
         t = time.time()
@@ -550,7 +556,7 @@ def run_tests():
         st.text(f"\n\ntime: {time.time()-t:.1f} seconds\n---\n\n")
 
 
-def replace_parameters(sql):
+def replace_parameters(sql: str) -> str:
     if not SUPPORT_PARAMETERS:
         return sql
     params = get_parameters()
@@ -561,9 +567,12 @@ def replace_parameters(sql):
     return sql
 
 
-def process_response(response, container):
+def process_response(
+    response: typing.Any,
+    container: typing.Any,
+) -> tuple[str | None, dict[str, typing.Any] | None]:
 
-    def format_as_list(response, key):
+    def format_as_list(response: dict[str, typing.Any], key: str) -> str:
         if key not in response:
             return "[]"
 
@@ -660,7 +669,12 @@ def process_response(response, container):
 
 
 # @st.fragment()
-def show_query_result(parent, df, resp_val, sql):
+def show_query_result(
+    parent: typing.Any,
+    df: pd.DataFrame,
+    resp_val: dict[str, typing.Any],
+    sql: str,
+) -> None:
     chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(
         ["Chart", "Data", "Explain", "SQL"],
     )
@@ -686,7 +700,11 @@ def show_query_result(parent, df, resp_val, sql):
         st.markdown(f"```sql\n{sql}\n```")
 
 
-def append_content(parent, content, arr):
+def append_content(
+    parent: typing.Any,
+    content: typing.Any,
+    arr: list[typing.Any] | None,
+) -> typing.Any:
 
     if arr is not None:
         arr.append(content)
@@ -715,7 +733,7 @@ def append_content(parent, content, arr):
     return parent
 
 
-def process_user_question(user_question):
+def process_user_question(user_question: str) -> None:
     append_content(
         parent=st,
         arr=st.session_state.content,
@@ -739,7 +757,7 @@ def process_user_question(user_question):
     run_query_flow(user_question=user_question, parent=lmnt)
 
 
-def run_query_flow(user_question, parent):
+def run_query_flow(user_question: str, parent: typing.Any) -> None:
     container = parent.container()
     stat_parent = parent.empty()
     stat = stat_parent.status(label="Initializing..", state="running")
