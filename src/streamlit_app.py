@@ -71,8 +71,6 @@ Determine if this a question about schema or data.
    - Go over the matching metadata, look carefully and perform the following validations
    - **Term Not Found**: Note any terms that cannot be matched to the schema.
    - **Ambiguous Term**: If a term matches multiple schema items equally, note all possible matches.
-   - **Aggregation Mismatch**: If the requested aggregation doesn't match the metric's defined aggregation
-     (and is not equivalent), report an aggregation mismatch error.
    - **Metrics Validation**:
      - **Ensure only metrics are in the `metrics` array. Do not include attributes in the `metrics` array.**
      - **Ensure the aggregation matches the metric's defined aggregation in the schema,
