@@ -30,7 +30,7 @@ _DEBUG = 0
 
 # Set to '1' to see sent queries
 PRINT_SQL_QUERY = 0
-PRINT_JSON_QUERY = 1
+PRINT_JSON_QUERY = 0
 
 # Cortex LLM Model to use
 # CORTEX_LLM = "mistral-large2"
@@ -612,18 +612,16 @@ def process_response(
             json_query = json.loads(m)
         except Exception:  # pylint: disable=broad-except
             st.exception(f"Bad JSON: {m}")
-            continue
-
-            # append_content(
-            #     parent=container,
-            #     content={
-            #         "type": TYPES.MARKDOWN,
-            #         "role": "assistant",
-            #         "debug": not PRINT_JSON_QUERY,
-            #         "text": f"\n{m}\n",
-            #     },
-            #     arr=st.session_state.content,
-            # )
+            append_content(
+                parent=container,
+                content={
+                    "type": TYPES.MARKDOWN,
+                    "role": "assistant",
+                    "debug": not PRINT_JSON_QUERY,
+                    "text": f"\n{m}\n",
+                },
+                arr=st.session_state.content,
+            )
 
         # Use Semantic Layer to get SQL for the data
         order_val = json_query.get("order")
