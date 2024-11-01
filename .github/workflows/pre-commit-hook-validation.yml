@@ -22,19 +22,19 @@ jobs:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: |
-            server/requirements.txt
-            server/requirements-static-code-analysis.txt
-            server/requirements-preinstall.txt
+            requirements.txt
+            requirements-static-code-analysis.txt
+            requirements-preinstall.txt
       - run: echo 'Cache hit - ${{ steps.setup-python.outputs.cache-hit }}'
       - name: Install dependencies
         run: |
-          if [ -f ./server/requirements-preinstall.txt ];
-            then pip install --no-deps -r ./server/requirements-preinstall.txt;
+          if [ -f ./requirements-preinstall.txt ];
+            then pip install --no-deps -r ./requirements-preinstall.txt;
           fi
-          if [ -f ./server/requirements-static-code-analysis.txt ];
-            then pip install --no-deps -r ./server/requirements-static-code-analysis.txt;
+          if [ -f ./requirements-static-code-analysis.txt ];
+            then pip install --no-deps -r ./requirements-static-code-analysis.txt;
           fi
-          if [ -f ./server/requirements.txt ]; then pip install --no-deps -r ./server/requirements.txt; fi
+          if [ -f ./requirements.txt ]; then pip install --no-deps -r ./requirements.txt; fi
           pip check
       - name: Verify all pre-commit hooks
         uses: pre-commit/action@v3.0.1
