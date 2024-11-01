@@ -318,7 +318,7 @@ def make_list_from_schema(schema: pd.DataFrame) -> str:
 
 
 def get_display_description(val: typing.Dict[str, str]) -> str:
-    return f'{val["DESCRIPTION"]}' if val["DESCRIPTION"] is not None else ""
+    return f' {val["DESCRIPTION"]}' if val["DESCRIPTION"] is not None else ""
 
 
 # Build prompt from template + schema
