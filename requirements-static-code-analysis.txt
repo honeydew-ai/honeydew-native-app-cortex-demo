@@ -1,4 +1,4 @@
-# add-trailing-comma==3.1.0
+add-trailing-comma==3.1.0
 astroid==3.3.5
 black==24.10.0
 cfgv==3.4.0
