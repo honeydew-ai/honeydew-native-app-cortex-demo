@@ -15,7 +15,7 @@ from snowflake.snowpark.context import get_active_session
 HONEYDEW_APP = "HONEYDEW_APP"
 
 ## Honeydew workspace and branch
-WORKSPACE = "tasty_bytes"
+WORKSPACE = "tpch_demo"
 BRANCH = "prod"
 
 ## Add it to a domain to set what is exposed to LLMs
@@ -777,6 +777,7 @@ if "content" not in st.session_state:
 st.title("Honeydew Analyst")
 st.markdown(f"Semantic Model: `{WORKSPACE}` on branch `{BRANCH}`")
 
+
 parent = st
 
 # Display chat history
@@ -797,5 +798,6 @@ if RUN_TESTS:
 else:
     if user_question := st.chat_input("Ask me.."):
         process_user_question(user_question)
+
 if st.button("Reload Schema"):
     st.cache_data.clear()
