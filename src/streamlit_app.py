@@ -104,18 +104,18 @@ Determine if this a question about schema or data.
 
 ### Dealing with dates
 
-Use {TIMESPINE_NAME} entity for date comparisons.
+Use {timespine_name} entity for date comparisons.
 
 Use following Snowflake SQL functions for dates:
 * `CURRENT_DATE` to refer to now
 * `DATE_TRUNC` to get boundaries of a time window, i.e. `DATE_TRUNC(month, CURRENT_DATE())` for month
-* `INTEVAL` to see relative time, i.e last_month is "MONTH({TIMESPINE_NAME}.date) >= CURRENT_DATE() - INTERVAL ''1 month''".
+* `INTEVAL` to see relative time, i.e last_month is "MONTH({timespine_name}.date) >= CURRENT_DATE() - INTERVAL ''1 month''".
 
 ### Your Rules
 
 ### filters:
 * compare one attribute to a given constant value. Can use =,<,>,>=,<=
-* Only use `{TIMESPINE_NAME}.date` to filter on dates
+* Only use `{timespine_name}.date` to filter on dates
 * all filters will apply
 * number can be compared to numbers `table.attr = 5` or ranges `table.attr >= 3 and table.attr < 10`
 * string can be compared to a value `table.attr = val` or values: `table.attr IN ('val1', 'val', ...)` or LIKE
@@ -156,13 +156,13 @@ Use following Snowflake SQL functions for dates:
 
 **Response:**
 
-**Working on** *What is the total of `sales.revenue` by `operation.country` where `{TIMESPINE_NAME}.quarter` is `Q1 2024`?*
+**Working on** *What is the total of `sales.revenue` by `operation.country` where `{timespine_name}.quarter` is `Q1 2024`?*
 
 ```json
 {{
   "group_by": ["operation.country"],
   "metrics": ["sales.revenue"],
-  "filters": [ "{TIMESPINE_NAME}.year = 2024", "{TIMESPINE_NAME}.quarter_of_year = 'Q1'" ]
+  "filters": [ "{timespine_name}.year = 2024", "{timespine_name}.quarter_of_year = 'Q1'" ]
 }}
 ```
 
@@ -208,15 +208,15 @@ Use following Snowflake SQL functions for dates:
 **User:** "Total revenue by customers who bought in more than $500 per quarter, for this and previous year"
 **Response:**
 
-**Working on** *What is the total `orders.revenue` by `customers.gender` where `orders.revenue > 500` over `{TIMESPINE_NAME}.quarters` where `{TIMESPINE_NAME}.year` is `this and previous`?*
+**Working on** *What is the total `orders.revenue` by `customers.gender` where `orders.revenue > 500` over `{timespine_name}.quarters` where `{timespine_name}.year` is `this and previous`?*
 
 ```json
 {{
-   "group_by": ["customers.gender", "{TIMESPINE_NAME}.year", "{TIMESPINE_NAME}.quarter"],
+   "group_by": ["customers.gender", "{timespine_name}.year", "{timespine_name}.quarter"],
    "metrics": ["orders.revenue"],
    "filters": [
      "orders.revenue > 500",
-     "{TIMESPINE_NAME}.year IN (YEAR(CURRENT_DATE()), YEAR(CURRENT_DATE()) - 1)"
+     "{timespine_name}.year IN (YEAR(CURRENT_DATE()), YEAR(CURRENT_DATE()) - 1)"
    ]
 }}
 ```
@@ -327,7 +327,12 @@ def build_sys_prompt() -> str:
     schema = get_schema()
     attrs = make_list_from_schema(schema.loc[schema["TYPE"] != "Metric"])
     metrics = make_list_from_schema(schema.loc[schema["TYPE"] == "Metric"])
-    return PROMPT.format(attributes=attrs, metrics=metrics, today=TODAY)
+    return PROMPT.format(
+        attributes=attrs,
+        metrics=metrics,
+        today=TODAY,
+        timespine_name=TIMESPINE_NAME,
+    )
 
 
 # Cortex LLM wrapper functions
