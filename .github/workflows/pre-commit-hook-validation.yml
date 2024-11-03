@@ -1,0 +1,40 @@
+---
+name: Pre-commit Hook Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  pre-commit-hook-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-static-code-analysis.txt
+            requirements-preinstall.txt
+      - run: echo 'Cache hit - ${{ steps.setup-python.outputs.cache-hit }}'
+      - name: Install dependencies
+        run: |
+          if [ -f ./requirements-preinstall.txt ];
+            then pip install --no-deps -r ./requirements-preinstall.txt;
+          fi
+          if [ -f ./requirements-static-code-analysis.txt ];
+            then pip install --no-deps -r ./requirements-static-code-analysis.txt;
+          fi
+          if [ -f ./requirements.txt ]; then pip install --no-deps -r ./requirements.txt; fi
+          pip check
+      - name: Verify all pre-commit hooks
+        uses: pre-commit/action@v3.0.1
