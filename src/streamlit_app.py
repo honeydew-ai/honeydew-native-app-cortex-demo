@@ -43,6 +43,7 @@ RESULTS_LIMIT = 10000
 SUPPORT_PARAMETERS = False
 
 TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
+TIMESPINE_NAME = "date"
 
 # Cortex Prompt Template
 # pylint: disable=line-too-long
@@ -192,7 +193,7 @@ Use following Snowflake SQL functions for dates:
 **Working on** *What is the total `orders.count` by `customer.gender`, `dish.category`, and `customer.city`?*
 
 *Note: I've Included `orders.count` as a metric to measure influence.*
-*Note: I've identified ambiguiuty between `location.city`, `customer.city` and picked `customer.city`*
+*Note: I've identified ambiguity between `location.city`, `customer.city` and picked `customer.city`*
 
 ```json
 {{
@@ -646,7 +647,7 @@ def process_response(
                 dates = ",".join(
                     f'"{val}"'
                     for val in json_query["group_by"]
-                    if val.startswith("date.")
+                    if val.startswith(f"{TIMESPINE_NAME}.")
                 )
                 if dates and "order by " not in order_fmt.lower():
                     sql += f"\nORDER BY {dates}"
