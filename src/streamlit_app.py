@@ -104,18 +104,18 @@ Determine if this a question about schema or data.
 
 ### Dealing with dates
 
-Use date entity for date comparisons.
+Use {TIMESPINE_NAME} entity for date comparisons.
 
 Use following Snowflake SQL functions for dates:
 * `CURRENT_DATE` to refer to now
 * `DATE_TRUNC` to get boundaries of a time window, i.e. `DATE_TRUNC(month, CURRENT_DATE())` for month
-* `INTEVAL` to see relative time, i.e last_month is "MONTH(date.date) >= CURRENT_DATE() - INTERVAL ''1 month''".
+* `INTEVAL` to see relative time, i.e last_month is "MONTH({TIMESPINE_NAME}.date) >= CURRENT_DATE() - INTERVAL ''1 month''".
 
 ### Your Rules
 
 ### filters:
 * compare one attribute to a given constant value. Can use =,<,>,>=,<=
-* Only use `date.date` to filter on dates
+* Only use `{TIMESPINE_NAME}.date` to filter on dates
 * all filters will apply
 * number can be compared to numbers `table.attr = 5` or ranges `table.attr >= 3 and table.attr < 10`
 * string can be compared to a value `table.attr = val` or values: `table.attr IN ('val1', 'val', ...)` or LIKE
@@ -156,13 +156,13 @@ Use following Snowflake SQL functions for dates:
 
 **Response:**
 
-**Working on** *What is the total of `sales.revenue` by `operation.country` where `date.quarter` is `Q1 2024`?*
+**Working on** *What is the total of `sales.revenue` by `operation.country` where `{TIMESPINE_NAME}.quarter` is `Q1 2024`?*
 
 ```json
 {{
   "group_by": ["operation.country"],
   "metrics": ["sales.revenue"],
-  "filters": [ "date.year = 2024", "date.quarter_of_year = 'Q1'" ]
+  "filters": [ "{TIMESPINE_NAME}.year = 2024", "{TIMESPINE_NAME}.quarter_of_year = 'Q1'" ]
 }}
 ```
 
@@ -208,15 +208,15 @@ Use following Snowflake SQL functions for dates:
 **User:** "Total revenue by customers who bought in more than $500 per quarter, for this and previous year"
 **Response:**
 
-**Working on** *What is the total `orders.revenue` by `customers.gender` where `orders.revenue > 500` over `date.quarters` where `date.year` is `this and previous`?*
+**Working on** *What is the total `orders.revenue` by `customers.gender` where `orders.revenue > 500` over `{TIMESPINE_NAME}.quarters` where `{TIMESPINE_NAME}.year` is `this and previous`?*
 
 ```json
 {{
-   "group_by": ["customers.gender", "date.year", "date.quarter"],
+   "group_by": ["customers.gender", "{TIMESPINE_NAME}.year", "{TIMESPINE_NAME}.quarter"],
    "metrics": ["orders.revenue"],
    "filters": [
      "orders.revenue > 500",
-     "date.year IN (YEAR(CURRENT_DATE()), YEAR(CURRENT_DATE()) - 1)"
+     "{TIMESPINE_NAME}.year IN (YEAR(CURRENT_DATE()), YEAR(CURRENT_DATE()) - 1)"
    ]
 }}
 ```
