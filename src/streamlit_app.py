@@ -44,6 +44,8 @@ SUPPORT_PARAMETERS = False
 TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
 TIMESPINE_NAME = "date"
 
+MAX_ROWS_TO_SHOW_IN_CHART = 50
+
 # Cortex Prompt Template
 PROMPT = """
 # Honeydew AI Data Analyst
@@ -69,7 +71,8 @@ Determine if this a question about schema or data.
    - Go over the matching metadata, look carefully and perform the following validations
    - **Term Not Found**: Note any terms that cannot be matched to the schema.
    - **Ambiguous Term**: If a term matches multiple schema items equally, note all possible matches.
-   - **Metrics Validation**: **Ensure only metrics are in the `metrics` array. Do not include attributes in the `metrics` array.**
+   - **Metrics Validation**:
+     - **Ensure only metrics are in the `metrics` array. Do not include attributes in the `metrics` array.**
 
 - if error occured
   - provide messages according to the error handling guidelines.
@@ -228,19 +231,6 @@ Use following Snowflake SQL functions for dates:
 }}
 ```
 
-#### Example: Dynamic measure
-
-**User:** "Get the min, avg and max processing duration per customer"
-**Response:**
-
-**Working on** *What are the MIN(`process.duration`), AVG(`process.duration`), MAX(`process.duration`) over `customer.name`?*
-
-```json
-{{
-   "group_by": ["customers.name"],
-   "metrics": ["MIN(\"process.duration\")", MAX(\"process.duration\"), AVG(\"process.duration\") ],
-}}
-```
 
 ### Error Handling
 
@@ -551,13 +541,15 @@ def make_chart(df: pd.DataFrame) -> bool:
     # text
     elif len(str_columns) >= 1:
 
-        if len(df_to_show) > 50:
+        if len(df_to_show) > MAX_ROWS_TO_SHOW_IN_CHART:
             metric_column = numeric_columns[0]  # First numeric column
-            st.markdown(f"**Showing top 50 values sorted by {metric_column}**")
+            st.markdown(
+                f"**Showing top {MAX_ROWS_TO_SHOW_IN_CHART} values sorted by {metric_column}**",
+            )
             df_to_show = df_to_show.sort_values(
                 by=metric_column,
                 ascending=False,
-            ).head(50)
+            ).head(MAX_ROWS_TO_SHOW_IN_CHART)
 
         if len(str_columns) == 1:
             chart = (
