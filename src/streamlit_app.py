@@ -16,7 +16,7 @@ from snowflake.snowpark.context import get_active_session
 HONEYDEW_APP = "HONEYDEW_APP"
 
 # Honeydew workspace and branch
-WORKSPACE = "tasty_bytes"
+WORKSPACE = "tpch_demo"
 BRANCH = "prod"
 
 # Add it to a domain to set what is exposed to LLMs
@@ -121,9 +121,7 @@ Use following Snowflake SQL functions for dates:
 * everything is automatically connected - you can use any group you want
 
 ### Instructions for metrics:
-* **there are two types of metrics**
-  * **predefined in schema**: a metric defined in the schema and is added as-is to the metrics array
-  * **dyna,ic metric**: where you apply a MIN/MAX/AVG aggregation on a numeric attributes. I/E: MIN('entity.attribute')
+* may choose only from the schema metrics
 * can be empty - don't add a default metric if not explicitly asked for
 
 ## Your Schema
