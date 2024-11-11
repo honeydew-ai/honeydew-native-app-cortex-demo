@@ -31,6 +31,7 @@ RESULTS_LIMIT = 10000
 
 
 class TYPES:
+    # pylint: disable=too-few-public-methods
     QUERY_RESULT = "data"
     INIT = "init"
     SQL = "sql"
@@ -60,6 +61,7 @@ def supress_failures(
 
 @supress_failures
 def make_chart(df: pd.DataFrame) -> bool:
+    # pylint: disable=too-many-branches,too-many-statements
 
     def create_grouped_bar_chart(
         df: pd.DataFrame,
