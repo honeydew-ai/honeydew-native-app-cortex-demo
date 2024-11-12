@@ -218,7 +218,7 @@ def render_chart(df: pd.DataFrame) -> bool:
     return True
 
 
-# @supress_failures
+@supress_failures
 def render_content(
     parent: typing.Any,
     content: typing.Any,
@@ -235,13 +235,15 @@ def render_content(
                     return item
         return None
 
-    def get_item_caption(json_data: typing.Any, name: str) -> typing.Any:
-        parts = ["- "]
+    def get_item_caption(json_data: typing.Any, p: str, name: str) -> typing.Any:
+        parts = [" * "]
 
         item = find_item(json_data, name)
 
         if item is not None and item["ui_url"] is not None and item["ui_url"] != "":
             parts.append(f" [{name}]({item['ui_url']})")
+        elif p == "filters":
+            parts.append(f"`{name}`")
         else:
             parts.append(name)
 
@@ -250,7 +252,7 @@ def render_content(
             and item["description"] is not None
             and item["description"] != ""
         ):
-            parts.append(f" ({item['description']})")
+            parts.append(f"\n\n    {item['description']}")
 
         return "".join(parts)
 
@@ -263,7 +265,7 @@ def render_content(
             r += q[p]
 
         else:
-            r += "\n\n".join(get_item_caption(q, val) for val in q[p])
+            r += "\n\n".join(get_item_caption(q, p, val) for val in q[p])
 
         return r
 
@@ -353,7 +355,7 @@ def ask(
     return {}
 
 
-# @supress_failures
+@supress_failures
 def run_query_flow(user_question: str) -> None:
 
     def render_history_item(  # pylint: disable=too-many-arguments
