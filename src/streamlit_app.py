@@ -23,19 +23,22 @@ SHOW_SQL_QUERY = 1  # Display SQL tab
 SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 
 # Set to '1' to see debug messages
-_DEBUG = 0
-
+_DEBUG = 1
 
 # Results limit
 RESULTS_LIMIT = 10000
 
 
-class TYPES:
-    # pylint: disable=too-few-public-methods
+class HISTORY_ITEM_TYPES:
+    USER = "user"
     QUERY_RESULT = "data"
-    INIT = "init"
-    SQL = "sql"
+    ASSISTANT_INIT = "assistant_init"
     MARKDOWN = "markdown"
+
+
+class ROLES:
+    USER = "user"
+    ASSISTANT = "assistant"
 
 
 HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
@@ -59,11 +62,10 @@ def supress_failures(
     return func_without_errors
 
 
-@supress_failures
-def make_chart(df: pd.DataFrame) -> bool:
+def render_chart(df: pd.DataFrame) -> bool:
     # pylint: disable=too-many-branches,too-many-statements
 
-    def create_grouped_bar_chart(
+    def render_grouped_bar_chart(
         df: pd.DataFrame,
         str_columns: typing.List[str],
         numeric_columns: typing.List[str],
@@ -191,11 +193,11 @@ def make_chart(df: pd.DataFrame) -> bool:
             st.altair_chart(chart, use_container_width=True)
 
         else:
-            return create_grouped_bar_chart(df_to_show, str_columns, numeric_columns)
+            return render_grouped_bar_chart(df_to_show, str_columns, numeric_columns)
 
     # multiple numeric
     elif len(numeric_columns) > 1:
-        return create_grouped_bar_chart(
+        return render_grouped_bar_chart(
             df_to_show,
             [numeric_columns[0]],
             numeric_columns[1:],
@@ -214,6 +216,88 @@ def make_chart(df: pd.DataFrame) -> bool:
         return False
 
     return True
+
+
+@supress_failures
+def render_content(
+    parent: typing.Any,
+    content: typing.Any,
+) -> typing.Any:
+
+    def get_panel_decription(q: typing.Dict[str, typing.Any], p: str, n: str) -> str:
+        if p not in q or q[p] is None or len(q[p]) == 0:
+            return ""
+
+        r = f"\n\n**{n}:**\n\n"
+        if isinstance(q[p], str):
+            r += q[p]
+
+        else:
+            r += "\n\n".join("- " + val for val in q[p])
+
+        return r
+
+    if str(content["type"]) == HISTORY_ITEM_TYPES.USER:
+        parent = parent.chat_message(content["role"], avatar="🧑‍💻")
+
+    if str(content["type"]) == HISTORY_ITEM_TYPES.ASSISTANT_INIT:
+        parent = parent.chat_message(content["role"], avatar=HONEYDEW_ICON_URL)
+
+    if content["text"] is not None:
+        parent.markdown(content["text"])
+
+    if str(content["type"]) == HISTORY_ITEM_TYPES.QUERY_RESULT:
+        df = content["data"]
+        json_query = content["json_query"]
+        sql_query = content["sql_query"]
+
+        tab_names = ["Chart", "Data"]
+        if SHOW_EXPLAIN_QUERY:
+            tab_names.append("Explain")
+
+        if SHOW_SQL_QUERY:
+            tab_names.append("SQL")
+
+        chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(tab_names)
+
+        with chart_tab:
+            if not render_chart(df):
+                st.dataframe(df)
+
+        with data_tab:
+            st.dataframe(df)
+            csv = typing.cast(bytes, df.to_csv().encode("utf-8"))
+            st.download_button(
+                label="Download data as CSV",
+                data=csv,
+                key=f"download_btn_{str(uuid.uuid4())}",
+                file_name="data.csv",
+                mime="text/csv",
+            )
+
+        if SHOW_EXPLAIN_QUERY:
+            # st.code(json.dumps(json_query, indent=4))
+            with explain_tab:
+                st.markdown(
+                    "".join(
+                        [
+                            get_panel_decription(
+                                json_query,
+                                "attributes",
+                                "Attributes",
+                            ),
+                            get_panel_decription(json_query, "metrics", "Metrics"),
+                            get_panel_decription(json_query, "filters", "Filters"),
+                            get_panel_decription(json_query, "transform_sql", "Order"),
+                        ],
+                    ),
+                )
+
+        if SHOW_SQL_QUERY:
+            with hd_sql_tab:
+                st.markdown(f"```sql{sql_query}```")
+
+    return parent
 
 
 def ask(
@@ -235,155 +319,98 @@ def ask(
         )
 
     except Exception as exp:  # pylint: disable=broad-except
-        st.error(str(exp))
+        st.error(f"Failed:\n{exp}")
 
     return {}
 
 
-def append_content(
-    parent: typing.Any,
-    content: typing.Any,
-    arr: typing.Optional[typing.List[typing.Any]],
-) -> typing.Any:
-
-    def get_csv(df: pd.DataFrame) -> bytes:
-        return typing.cast(bytes, df.to_csv().encode("utf-8"))
-
-    if arr is not None:
-        arr.append(content)
-
-    if content["type"] == TYPES.INIT:
-        if str(content["role"]) == "assistant":
-            avatar = HONEYDEW_ICON_URL
-        elif str(content["role"]) == "user":
-            avatar = "🧑‍💻"
-        else:
-            avatar = None
-        parent = parent.chat_message(content["role"], avatar=avatar)
-
-    if content["text"] is not None:
-        parent.markdown(content["text"])
-
-    if str(content["type"]) == TYPES.QUERY_RESULT:
-
-        df = content["data"]
-        json_query = content["json_query"]
-        sql = content["hd_sql"]
-
-        tab_names = ["Chart", "Data"]
-        if SHOW_EXPLAIN_QUERY:
-            tab_names.append("Explain")
-
-        if SHOW_SQL_QUERY:
-            tab_names.append("SQL")
-
-        chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(tab_names)
-
-        with chart_tab:
-            if not make_chart(df):
-                st.dataframe(df)
-
-        with data_tab:
-            st.dataframe(df)
-            csv = get_csv(df)
-            st.download_button(
-                label="Download data as CSV",
-                data=csv,
-                key=f"download_btn_{str(uuid.uuid4())}",
-                file_name="data.csv",
-                mime="text/csv",
-            )
-
-        if SHOW_EXPLAIN_QUERY:
-            with explain_tab:
-                st.code(json.dumps(json_query, indent=4))
-
-        if SHOW_SQL_QUERY:
-            with hd_sql_tab:
-                st.markdown(f"```sql\n{sql}\n```")
-
-    return parent
-
-
+@supress_failures
 def run_query_flow(user_question: str) -> None:
 
-    append_content(
-        parent=st,
-        arr=st.session_state.content,
-        content={
-            "type": TYPES.INIT,
-            "role": "user",
-            "text": user_question,
-        },
-    )
+    def render_history_item(
+        parent: typing.Any,
+        t: str,
+        role: str,
+        text: typing.Optional[str] = None,
+        data: typing.Optional[typing.Any] = None,
+        json_query: typing.Optional[typing.Any] = None,
+        sql_query: typing.Optional[str] = None,
+    ) -> typing.Any:
 
-    parent = append_content(
-        parent=st,
-        arr=st.session_state.content,
-        content={
-            "type": TYPES.INIT,
-            "role": "assistant",
-            "text": None,
-        },
-    )
+        item = {
+            "type": t,
+            "role": role,
+            "text": text,
+        }
 
+        if data is not None:
+            item["data"] = data
+
+        if json_query is not None:
+            item["json_query"] = json_query
+
+        if sql_query is not None:
+            item["sql_query"] = sql_query
+
+        st.session_state.history.append(item)
+        return render_content(parent, item)
+
+    render_history_item(st, HISTORY_ITEM_TYPES.USER, ROLES.USER, user_question)
+
+    parent = render_history_item(
+        st,
+        HISTORY_ITEM_TYPES.ASSISTANT_INIT,
+        ROLES.ASSISTANT,
+    )
     container = parent.container()
     stat_parent = parent.empty()
     stat = stat_parent.status(label="Running..", state="running")
 
-    # executing Honeydew
-    hdresponse = ask(user_question)
+    try:
+        # executing Honeydew
+        hdresponse = ask(user_question)
 
-    # showing unexepcted error
-    if hdresponse["error"] is not None:
-        append_content(
-            parent=container,
-            arr=st.session_state.content,
-            content={
-                "type": TYPES.MARKDOWN,
-                "role": "assistant",
-                "text": str(hdresponse["error"]),
-            },
-        )
-        return
+        # showing unexepcted error
+        if "error" in hdresponse and hdresponse["error"] is not None:
+            render_history_item(
+                container,
+                HISTORY_ITEM_TYPES.MARKDOWN,
+                ROLES.ASSISTANT,
+                str(hdresponse["error"]),
+            )
+            return
 
-    # showing the LLM response
-    if hdresponse["llm_response"] is not None:
-        append_content(
-            parent=container,
-            arr=st.session_state.content,
-            content={
-                "type": TYPES.MARKDOWN,
-                "role": "assistant",
-                "text": str(hdresponse["llm_response"]),
-            },
-        )
+        # showing the LLM response
+        if "llm_response" in hdresponse:
+            render_history_item(
+                container,
+                HISTORY_ITEM_TYPES.MARKDOWN,
+                ROLES.ASSISTANT,
+                str(hdresponse["llm_response"]),
+            )
 
-    # executing query
-    if hdresponse["sql"] is not None:
-        stat.update(label="Runninq Query..", state="running")
-        df = session.sql(str(hdresponse["sql"])).to_pandas()
+        # executing query
+        if "sql" in hdresponse:
+            stat.update(label="Runninq Query..", state="running")
+            df = session.sql(str(hdresponse["sql"])).to_pandas()
+            render_history_item(
+                container,
+                HISTORY_ITEM_TYPES.QUERY_RESULT,
+                ROLES.ASSISTANT,
+                "",
+                df,
+                hdresponse["perspective"],
+                str(hdresponse["sql"]),
+            )
 
-        append_content(
-            parent=container,
-            content={
-                "type": TYPES.QUERY_RESULT,
-                "text": "",
-                "data": df,
-                "json_query": dict(hdresponse["perspective"]),
-                "hd_sql": str(hdresponse["sql"]),
-                "role": "assistant",
-            },
-            arr=st.session_state.content,
-        )
-
-    stat.update(label="Completed", state="complete")
+    finally:
+        stat.update(label="Completed", state="complete")
 
 
 #
 # Main flow
-if "content" not in st.session_state:
-    st.session_state.content = []
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 st.title("Honeydew Analyst")
 st.markdown(f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`")
@@ -391,12 +418,15 @@ st.markdown(f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`")
 parent_st = st
 
 if HISTORY_ENABLED:
-    for content_item in st.session_state.content:
-        if content_item["type"] == TYPES.INIT:
-            parent_st = append_content(parent=st, content=content_item, arr=None)
+    for history_item in st.session_state.history:
+        if (
+            history_item["type"] == HISTORY_ITEM_TYPES.ASSISTANT_INIT
+            or history_item["type"] == HISTORY_ITEM_TYPES.USER
+        ):
+            parent_st = render_content(parent=st, content=history_item)
 
         else:
-            append_content(parent=parent_st, content=content_item, arr=None)
+            render_content(parent=parent_st, content=history_item)
 
 if user_question_input := st.chat_input("Ask me.."):
     run_query_flow(user_question_input)
