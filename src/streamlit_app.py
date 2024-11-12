@@ -218,11 +218,41 @@ def render_chart(df: pd.DataFrame) -> bool:
     return True
 
 
-@supress_failures
+# @supress_failures
 def render_content(
     parent: typing.Any,
     content: typing.Any,
 ) -> typing.Any:
+
+    def find_item(json_data: typing.Any, search_str: str) -> typing.Any:
+        # Split the search string into entity and name components
+        entity, name = search_str.split(".")
+
+        # Search in both attributes and metrics within components
+        for section in ["attributes", "metrics"]:
+            for item in json_data.get("components", {}).get(section, []):
+                if item.get("entity") == entity and item.get("name") == name:
+                    return item
+        return None
+
+    def get_item_caption(json_data: typing.Any, name: str) -> typing.Any:
+        parts = ["- "]
+
+        item = find_item(json_data, name)
+
+        if item is not None and item["ui_url"] is not None and item["ui_url"] != "":
+            parts.append(f" [{name}]({item['ui_url']})")
+        else:
+            parts.append(name)
+
+        if (
+            item is not None
+            and item["description"] is not None
+            and item["description"] != ""
+        ):
+            parts.append(f" ({item['description']})")
+
+        return "".join(parts)
 
     def get_panel_decription(q: typing.Dict[str, typing.Any], p: str, n: str) -> str:
         if p not in q or q[p] is None or len(q[p]) == 0:
@@ -233,7 +263,7 @@ def render_content(
             r += q[p]
 
         else:
-            r += "\n\n".join("- " + val for val in q[p])
+            r += "\n\n".join(get_item_caption(q, val) for val in q[p])
 
         return r
 
@@ -276,7 +306,6 @@ def render_content(
             )
 
         if SHOW_EXPLAIN_QUERY:
-            # st.code(json.dumps(json_query, indent=4))
             with explain_tab:
                 st.markdown(
                     "".join(
@@ -288,7 +317,7 @@ def render_content(
                             ),
                             get_panel_decription(json_query, "metrics", "Metrics"),
                             get_panel_decription(json_query, "filters", "Filters"),
-                            get_panel_decription(json_query, "transform_sql", "Order"),
+                            #   get_panel_decription(json_query, "transform_sql", "Order"),
                         ],
                     ),
                 )
@@ -324,7 +353,7 @@ def ask(
     return {}
 
 
-@supress_failures
+# @supress_failures
 def run_query_flow(user_question: str) -> None:
 
     def render_history_item(  # pylint: disable=too-many-arguments
