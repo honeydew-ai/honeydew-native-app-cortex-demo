@@ -29,14 +29,14 @@ _DEBUG = 1
 RESULTS_LIMIT = 10000
 
 
-class HISTORY_ITEM_TYPES:
+class HistoryItemTypes:  # pylint: disable=too-few-public-methods
     USER = "user"
     QUERY_RESULT = "data"
     ASSISTANT_INIT = "assistant_init"
     MARKDOWN = "markdown"
 
 
-class ROLES:
+class Roles:  # pylint: disable=too-few-public-methods
     USER = "user"
     ASSISTANT = "assistant"
 
@@ -237,16 +237,16 @@ def render_content(
 
         return r
 
-    if str(content["type"]) == HISTORY_ITEM_TYPES.USER:
+    if str(content["type"]) == HistoryItemTypes.USER:
         parent = parent.chat_message(content["role"], avatar="🧑‍💻")
 
-    if str(content["type"]) == HISTORY_ITEM_TYPES.ASSISTANT_INIT:
+    if str(content["type"]) == HistoryItemTypes.ASSISTANT_INIT:
         parent = parent.chat_message(content["role"], avatar=HONEYDEW_ICON_URL)
 
     if content["text"] is not None:
         parent.markdown(content["text"])
 
-    if str(content["type"]) == HISTORY_ITEM_TYPES.QUERY_RESULT:
+    if str(content["type"]) == HistoryItemTypes.QUERY_RESULT:
         df = content["data"]
         json_query = content["json_query"]
         sql_query = content["sql_query"]
@@ -327,9 +327,10 @@ def ask(
 @supress_failures
 def run_query_flow(user_question: str) -> None:
 
-    def render_history_item(
+    def render_history_item(  # pylint: disable=too-many-arguments
+        *,
         parent: typing.Any,
-        t: str,
+        history_item_type: str,
         role: str,
         text: typing.Optional[str] = None,
         data: typing.Optional[typing.Any] = None,
@@ -338,7 +339,7 @@ def run_query_flow(user_question: str) -> None:
     ) -> typing.Any:
 
         item = {
-            "type": t,
+            "type": history_item_type,
             "role": role,
             "text": text,
         }
@@ -355,12 +356,17 @@ def run_query_flow(user_question: str) -> None:
         st.session_state.history.append(item)
         return render_content(parent, item)
 
-    render_history_item(st, HISTORY_ITEM_TYPES.USER, ROLES.USER, user_question)
+    render_history_item(
+        parent=st,
+        history_item_type=HistoryItemTypes.USER,
+        role=Roles.USER,
+        text=user_question,
+    )
 
     parent = render_history_item(
-        st,
-        HISTORY_ITEM_TYPES.ASSISTANT_INIT,
-        ROLES.ASSISTANT,
+        parent=st,
+        history_item_type=HistoryItemTypes.ASSISTANT_INIT,
+        role=Roles.ASSISTANT,
     )
     container = parent.container()
     stat_parent = parent.empty()
@@ -373,20 +379,20 @@ def run_query_flow(user_question: str) -> None:
         # showing unexepcted error
         if "error" in hdresponse and hdresponse["error"] is not None:
             render_history_item(
-                container,
-                HISTORY_ITEM_TYPES.MARKDOWN,
-                ROLES.ASSISTANT,
-                str(hdresponse["error"]),
+                parent=container,
+                history_item_type=HistoryItemTypes.MARKDOWN,
+                role=Roles.ASSISTANT,
+                text=str(hdresponse["error"]),
             )
             return
 
         # showing the LLM response
         if "llm_response" in hdresponse:
             render_history_item(
-                container,
-                HISTORY_ITEM_TYPES.MARKDOWN,
-                ROLES.ASSISTANT,
-                str(hdresponse["llm_response"]),
+                parent=container,
+                history_item_type=HistoryItemTypes.MARKDOWN,
+                role=Roles.ASSISTANT,
+                text=str(hdresponse["llm_response"]),
             )
 
         # executing query
@@ -394,13 +400,13 @@ def run_query_flow(user_question: str) -> None:
             stat.update(label="Runninq Query..", state="running")
             df = session.sql(str(hdresponse["sql"])).to_pandas()
             render_history_item(
-                container,
-                HISTORY_ITEM_TYPES.QUERY_RESULT,
-                ROLES.ASSISTANT,
-                "",
-                df,
-                hdresponse["perspective"],
-                str(hdresponse["sql"]),
+                parent=container,
+                history_item_type=HistoryItemTypes.QUERY_RESULT,
+                role=Roles.ASSISTANT,
+                text="",
+                data=df,
+                json_query=hdresponse["perspective"],
+                sql_query=str(hdresponse["sql"]),
             )
 
     finally:
@@ -420,8 +426,8 @@ parent_st = st
 if HISTORY_ENABLED:
     for history_item in st.session_state.history:
         if (
-            history_item["type"] == HISTORY_ITEM_TYPES.ASSISTANT_INIT
-            or history_item["type"] == HISTORY_ITEM_TYPES.USER
+            history_item["type"] == HistoryItemTypes.ASSISTANT_INIT
+            or history_item["type"] == HistoryItemTypes.USER
         ):
             parent_st = render_content(parent=st, content=history_item)
 
