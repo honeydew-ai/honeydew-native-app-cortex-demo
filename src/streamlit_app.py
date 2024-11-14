@@ -280,6 +280,7 @@ def render_content(
 
     if str(content["type"]) == HistoryItemTypes.QUERY_RESULT:
         df = content["data"]
+        df = df.round(2)
         json_query = content["json_query"]
         sql_query = content["sql_query"]
 
