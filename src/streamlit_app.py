@@ -12,7 +12,7 @@ from snowflake.snowpark.context import get_active_session
 #
 # Honeydew related settings
 HD_APP = "HONEYDEW_APP"  # Name of installed Native Application
-HD_WORKSPACE = "tasty_bytes"  # Honeydew model
+HD_WORKSPACE = "tpch_demo"  # Honeydew model
 HD_BRANCH = "prod"  # Honeydew branch
 HD_DOMAIN = "llm"  # Honeydew domain
 
