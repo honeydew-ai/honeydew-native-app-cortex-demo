@@ -25,6 +25,10 @@ SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 # Set to '1' to see debug messages
 _DEBUG = 1
 
+# Cortex LLM
+CORTEX_LLM = "llama3.1-405b"
+# CORTEX_LLM = "mistral-large2"
+
 # Results limit
 RESULTS_LIMIT = 10000
 
@@ -341,6 +345,7 @@ def ask(
                     branch => '{HD_BRANCH}',
                     question => '{question}',
                     domain => '{HD_DOMAIN}',
+                    cortex_llm_name => '{CORTEX_LLM}',
                     default_results_limit => {RESULTS_LIMIT}) as response"""
 
         data = session.sql(sql)
@@ -428,7 +433,7 @@ def run_query_flow(user_question: str) -> None:
             )
 
         # executing query
-        if "sql" in hdresponse:
+        if "sql" in hdresponse and hdresponse["sql"] is not None:
             stat.update(label="Runninq Query..", state="running")
             df = session.sql(str(hdresponse["sql"])).to_pandas()
             render_history_item(
