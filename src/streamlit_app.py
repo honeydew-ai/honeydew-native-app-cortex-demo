@@ -169,9 +169,9 @@ def render_chart(df: pd.DataFrame) -> bool:
 
     # text
     elif len(str_columns) >= 1:
+        metric_column = numeric_columns[0]  # First numeric column
 
         if len(df_to_show) > 50:
-            metric_column = numeric_columns[0]  # First numeric column
             st.markdown(f"**Showing top 50 values sorted by {metric_column}**")
             df_to_show = df_to_show.sort_values(by=metric_column, ascending=False).head(
                 50,
