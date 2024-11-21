@@ -69,6 +69,9 @@ def supress_failures(
 def render_chart(df: pd.DataFrame) -> bool:
     # pylint: disable=too-many-branches,too-many-statements
 
+    if len(df) == 0:
+        return False
+
     def render_grouped_bar_chart(
         df: pd.DataFrame,
         str_columns: typing.List[str],
@@ -222,6 +225,23 @@ def render_chart(df: pd.DataFrame) -> bool:
     return True
 
 
+def render_dataframe(df: pd.DataFrame) -> None:
+    if len(df) == 0:
+        st.markdown("No data available to display. Please refine your question.")
+
+    st.dataframe(df)
+
+    if len(df) > 0:
+        csv = typing.cast(bytes, df.to_csv().encode("utf-8"))
+        st.download_button(
+            label="Download data as CSV",
+            data=csv,
+            key=f"download_btn_{str(uuid.uuid4())}",
+            file_name="data.csv",
+            mime="text/csv",
+        )
+
+
 @supress_failures
 def render_content(
     parent: typing.Any,
@@ -299,18 +319,10 @@ def render_content(
 
         with chart_tab:
             if not render_chart(df):
-                st.dataframe(df)
+                render_dataframe(df)
 
         with data_tab:
-            st.dataframe(df)
-            csv = typing.cast(bytes, df.to_csv().encode("utf-8"))
-            st.download_button(
-                label="Download data as CSV",
-                data=csv,
-                key=f"download_btn_{str(uuid.uuid4())}",
-                file_name="data.csv",
-                mime="text/csv",
-            )
+            render_dataframe(df)
 
         if SHOW_EXPLAIN_QUERY:
             with explain_tab:
@@ -470,6 +482,7 @@ if HISTORY_ENABLED:
 
         else:
             render_content(parent=parent_st, content=history_item)
+        st.divider()
 
 if user_question_input := st.chat_input("Ask me.."):
     run_query_flow(user_question_input)
