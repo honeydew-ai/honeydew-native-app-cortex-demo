@@ -419,7 +419,7 @@ def run_query_flow(user_question: str) -> None:
     )
     container = parent.container()
     stat_parent = parent.empty()
-    stat = stat_parent.status(label="Running..", state="running")
+    stat = stat_parent.status(label="Analyzing the question..", state="running")
 
     try:
         # executing Honeydew
@@ -482,7 +482,6 @@ if HISTORY_ENABLED:
 
         else:
             render_content(parent=parent_st, content=history_item)
-        st.divider()
 
 if user_question_input := st.chat_input("Ask me.."):
     run_query_flow(user_question_input)
