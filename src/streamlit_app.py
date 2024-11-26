@@ -548,16 +548,20 @@ def render_message(
 
         return "".join(parts)
 
-    def get_panel_decription(q: typing.Dict[str, typing.Any], p: str, n: str) -> str:
-        if p not in q or q[p] is None or len(q[p]) == 0:
+    def get_panel_description(
+        question: typing.Dict[str, typing.Any],
+        p: str,
+        n: str,
+    ) -> str:
+        if p not in question or question[p] is None or len(question[p]) == 0:
             return ""
 
         r = f"\n\n**{n}:**\n\n"
-        if isinstance(q[p], str):
-            r += q[p]
+        if isinstance(question[p], str):
+            r += question[p]
 
         else:
-            r += "\n\n".join(get_item_caption(q, p, val) for val in q[p])
+            r += "\n\n".join(get_item_caption(question, p, val) for val in question[p])
 
         return r
 
@@ -599,13 +603,13 @@ def render_message(
                 st.markdown(
                     "".join(
                         [
-                            get_panel_decription(
+                            get_panel_description(
                                 json_query,
                                 "attributes",
                                 "Attributes",
                             ),
-                            get_panel_decription(json_query, "metrics", "Metrics"),
-                            get_panel_decription(json_query, "filters", "Filters"),
+                            get_panel_description(json_query, "metrics", "Metrics"),
+                            get_panel_description(json_query, "filters", "Filters"),
                             #   get_panel_decription(json_query, "transform_sql", "Order"),
                         ],
                     ),
