@@ -30,7 +30,6 @@ import typing
 import uuid
 
 import altair as alt
-import dotenv as env
 import pandas as pd
 import snowflake.connector
 import streamlit as st
@@ -100,6 +99,8 @@ def init() -> None:
 
     except Exception:  # pylint: disable=broad-exception-caught
         # Load environment variables from .env file
+        import dotenv as env  # pylint: disable=import-outside-toplevel
+
         env.load_dotenv()
 
         st.session_state.CONNECTION = snowflake.connector.connect(
@@ -169,6 +170,8 @@ def execute_llm(
             return json.loads(m)
 
     # Load environment variables from .env file
+    import dotenv as env  # pylint: disable=import-outside-toplevel
+
     env.load_dotenv()
 
     query = f"""
@@ -185,14 +188,14 @@ def execute_llm(
 
 def execute_hd_ask_question(
     question: str,
-    h: typing.List[str],
+    hist: typing.List[str],
 ) -> typing.Any:
 
     sql = f"""select {HD_APP}.API.ASK_QUESTION(
                 workspace => '{HD_WORKSPACE}',
                 branch => '{HD_BRANCH}',
                 question => '{question}',
-                history => { "[" + ",".join(h) + "]"},
+                history => { "[" + ",".join(hist) + "]"},
                 domain => '{HD_DOMAIN}') as response"""
 
     r = json.loads(execute_sql(sql)[0][0])
@@ -630,7 +633,7 @@ def process_user_question(user_question: str) -> None:
         # executing Honeydew
         hdresponse = execute_hd_ask_question(
             user_question,
-            h=history_clone,
+            hist=history_clone,
         )
         if "error" in hdresponse and hdresponse["error"] is not None:
             render_message(history.push_assistant_error(hdresponse["error"]), container)
