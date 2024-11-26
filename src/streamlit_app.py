@@ -64,10 +64,6 @@ RESULTS_LIMIT = 10000
 HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
 
 
-# Load environment variables from .env file
-env.load_dotenv()
-
-
 def supress_failures(
     func: typing.Callable[..., typing.Any],
 ) -> typing.Callable[..., typing.Any]:
@@ -103,6 +99,9 @@ def init() -> None:
         st.session_state.SESSION = get_active_session()
 
     except Exception:  # pylint: disable=broad-except
+        # Load environment variables from .env file
+        env.load_dotenv()
+
         st.session_state.CONNECTION = snowflake.connector.connect(
             user=os.getenv("SF_USER"),
             password=os.getenv("SF_PASSWORD"),
@@ -168,6 +167,9 @@ def execute_llm(
     def extract_json_query(t: str) -> typing.Any:
         for m in re.findall(r"```json(.*?)```", t, flags=re.DOTALL):
             return json.loads(m)
+
+    # Load environment variables from .env file
+    env.load_dotenv()
 
     query = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE('{os.getenv("CORTEX_LLM")}',
