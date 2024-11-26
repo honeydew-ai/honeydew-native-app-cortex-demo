@@ -16,4 +16,4 @@ py-version = 3.8
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,wrong-import-order,duplicate-code,fixme
+disable=too-many-branches,import-outside-toplevel,broad-exception-caught,broad-exception-raised,missing-module-docstring,missing-class-docstring,missing-function-docstring,wrong-import-order,duplicate-code,fixme

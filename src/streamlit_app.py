@@ -23,22 +23,20 @@
 ####################################################################################
 
 import json
+import os
+import re
 import typing
 import uuid
+from typing import Any, Callable, Dict, Optional
 
 import altair as alt
+import dotenv as env
 import pandas as pd
+import snowflake.connector
 import streamlit as st
-from snowflake.snowpark.context import get_active_session
 
 # Constants
 
-#
-# Honeydew related settings
-HD_APP = "SEMANTIC_LAYER_ENTERPRISE_EDITION"  # Name of installed Native Application
-HD_WORKSPACE = "tpch_demo"  # Honeydew model
-HD_BRANCH = "prod"  # Honeydew branch
-HD_DOMAIN = "llm"  # Honeydew domain
 
 #
 # Behavior & UI  settings
@@ -46,124 +44,345 @@ HISTORY_ENABLED = True  # Display chat history
 SHOW_SQL_QUERY = 1  # Display SQL tab
 SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 
+HD_WORKSPACE = "tasty_bytes"  # Honeydew model
+HD_APP = "HONEYDEW_APP"  # Name of installed Native Application
+HD_BRANCH = "prod"  # Honeydew branch
+HD_DOMAIN = "llm"  # Honeydew domain
+
 # Set to '1' to see debug messages
 _DEBUG = 1
 
-# Cortex LLM
-CORTEX_LLM = "llama3.1-405b"
-# CORTEX_LLM = "mistral-large2"
-
-# Results limit
-RESULTS_LIMIT = 10000
-
-
-class HistoryItemTypes:  # pylint: disable=too-few-public-methods
-    USER = "user"
-    QUERY_RESULT = "data"
-    ASSISTANT_INIT = "assistant_init"
-    MARKDOWN = "markdown"
-
-
-class Roles:  # pylint: disable=too-few-public-methods
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
 HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
 
-# Application
 
-session = get_active_session()
+# Load environment variables from .env file
+env.load_dotenv()
 
 
 def supress_failures(
-    func: typing.Callable[..., typing.Any],
-) -> typing.Callable[..., typing.Any]:
-    def func_without_errors(*args: typing.Any, **kw: typing.Any) -> typing.Any:
+    func: Callable[..., Any],
+) -> Callable[..., Any]:
+    def func_without_errors(*args: Any, **kw: Any) -> Any:
         try:
             return func(*args, **kw)
-        except Exception as exp:  # pylint: disable=broad-exception-caught
+        except Exception as exp:
             if _DEBUG:
-                st.code(f"Failed {func.__name__}:\n{exp}")
+                raise exp
+
             return None
 
     return func_without_errors
 
 
+#
+# HD API
+
+
+def init() -> None:
+
+    if (
+        "connection_initialized" in st.session_state
+        and st.session_state.connection_initialized is True
+    ):
+        return
+
+    try:
+        from snowflake.snowpark.context import get_active_session
+
+        st.session_state.SESSION = get_active_session()
+
+    except Exception:
+        st.session_state.CONECTION = snowflake.connector.connect(
+            user=os.getenv("SF_USER"),
+            password=os.getenv("SF_PASSWORD"),
+            account=os.getenv("SF_ACCOUNT"),
+            host=os.getenv("SF_HOST"),
+            port=443,
+            warehouse=os.getenv("SF_WAREHOUSE"),
+            role=os.getenv("SF_ROLE"),
+        )
+        st.session_state.CONECTION.cursor().execute(
+            f"USE WAREHOUSE {os.getenv('SF_WAREHOUSE')}",
+        )
+
+    st.session_state.connection_initialized = True
+
+
+def encode(str_val: str) -> str:
+    str_val = re.sub(r"'+", "''", str_val, flags=re.S)
+    return str_val
+
+
+def execute_sql(sql: str) -> typing.Any:
+    if (sql is None) or (sql == ""):
+        raise Exception("SQL is empty")
+
+    r = None
+    if "SESSION" in st.session_state:
+        r = st.session_state.SESSION.sql(sql).collect()
+
+    elif "CONECTION" in st.session_state:
+        r = st.session_state.CONECTION.cursor().execute(sql).fetchall()
+    else:
+        raise Exception("No session / connection")
+
+    return r
+
+
+def execute_sql_table(sql: str) -> typing.Any:
+    if (sql is None) or (sql == ""):
+        raise Exception("SQL is empty")
+
+    r = None
+    if "SESSION" in st.session_state:
+        r = st.session_state.SESSION.sql(sql).to_pandas()
+
+    elif "CONECTION" in st.session_state:
+        r = st.session_state.CONECTION.cursor().execute(sql).fetch_pandas_all()
+    else:
+        raise Exception("No session / connection")
+
+    return r
+
+
+def execute_llm(
+    messages: typing.List[str],
+    temperature: float = 0.2,
+    max_tokens: float = 8096,
+) -> typing.Any:
+
+    def extract_message(t: str) -> str:
+        markers = ["JSON Query:", "```json", "```"]
+        first_marker_pos = len(t)
+        for marker in markers:
+            pos = t.find(marker)
+            if pos != -1 and pos < first_marker_pos:
+                first_marker_pos = pos
+
+        return t[:first_marker_pos].rstrip()
+
+    def extract_json_query(t: str) -> typing.Any:
+        for m in re.findall(r"```json(.*?)```", t, flags=re.DOTALL):
+            return json.loads(m)
+
+    query = f"""
+        SELECT SNOWFLAKE.CORTEX.COMPLETE('{os.getenv("CORTEX_LLM")}',
+        [
+            {', '.join(messages)}
+        ],
+        {{'temperature': {temperature}, 'max_tokens': {max_tokens}}}) as RESPONSE"""
+
+    cortex_response = json.loads(execute_sql(query)[0][0])["choices"][0]["messages"]
+
+    return extract_message(cortex_response), extract_json_query(cortex_response)
+
+
+def execute_hd_ask_question(
+    question: str,
+    h: typing.List[str],
+) -> Any:
+
+    sql = f"""select {HD_APP}.API.ASK_QUESTION(
+                workspace => '{HD_WORKSPACE}',
+                branch => '{HD_BRANCH}',
+                question => '{question}',
+                history => { "[" + ",".join(h) + "]"},
+                domain => '{HD_DOMAIN}') as response"""
+
+    r = json.loads(execute_sql(sql)[0][0])
+    return r
+
+
+init()
+
+
+#
+# Chat History
+
+ROLE_USER = "user"
+ROLE_ASSISTANT = "assistant"
+ROLE_SYSTEM = "system"
+TYPE_QUERY_RESULT = "assistant_query_result"
+TYPE_ASSISTANT_INIT = "assistant_init"
+TYPE_USER_MESSAGE = "user"
+TYPE_ASSISTANT_MESSAGE = "assistant_message"
+TYPE_LLM_RESPONSE = "assistant_llm_response"
+TYPE_ERROR = "assistant_error"
+
+
+class History:
+    def __init__(self, name: Optional[str] = None, system_prompt: Optional[str] = None):
+        self.messages: typing.List[Any] = []
+        self.ui_model: typing.List[Dict[str, Any]] = []
+        self.name = name
+        if system_prompt is not None and system_prompt != "":
+            self.push_system_message(encode(system_prompt))
+
+    def push_system_message(self, m: str) -> None:
+        if m is not None and m != "":
+            self.messages.append(
+                f"""{{'role':'{ROLE_SYSTEM}', 'content': '{m}'}}""",
+            )
+
+    def to_llm_message(self, m: Dict[str, Any]) -> str:
+        return f"""{{'role':'{m["role"]}', 'content': '{encode(m['text'])}'}}"""
+
+    def push_assistant_init(self) -> Dict[str, Any]:
+        m = {
+            "type": TYPE_ASSISTANT_INIT,
+            "role": ROLE_ASSISTANT,
+            "text": "Got it, please wait a sec.",
+        }
+
+        self.ui_model.append(m)
+        return m
+
+    def push_assistant_error(
+        self,
+        error: str,
+    ) -> Dict[str, Any]:
+
+        m = {
+            "type": TYPE_ERROR,
+            "role": ROLE_ASSISTANT,
+            "text": f"\n{error}\n",
+        }
+
+        # self.messages.append(self.to_llm_message(m))
+        self.ui_model.append(m)
+
+        return m
+
+    def push_assistant_llm_response(
+        self,
+        message: str,
+        json_query: Optional[typing.Any] = None,
+        append_json_to_ui: bool = True,
+    ) -> typing.Dict[str, Any]:
+        m = {
+            "type": TYPE_LLM_RESPONSE,
+            "role": ROLE_ASSISTANT,
+            "json_query": json_query,
+            "text": f"""\n{message}\n```json\n{json.dumps(json_query)}\n```""",
+        }
+
+        self.messages.append(self.to_llm_message(m))
+
+        if not append_json_to_ui:
+            m["text"] = f"\n{message}\n"
+
+        self.ui_model.append(m)
+
+        return m
+
+    def push_assistant_query_result(self, df: Any) -> Dict[str, Any]:
+        m = {
+            "type": TYPE_QUERY_RESULT,
+            "role": ROLE_ASSISTANT,
+            "data": df,
+            "text": "",
+        }
+
+        self.ui_model.append(m)
+
+        return m
+
+    def push_user_message(self, message: str) -> typing.Dict[str, Any]:
+        m = {
+            "type": TYPE_USER_MESSAGE,
+            "role": ROLE_USER,
+            "text": message,
+        }
+
+        self.messages.append(self.to_llm_message(m))
+        self.ui_model.append(m)
+
+        return m
+
+
+# # Application
+
+if "history" not in st.session_state:
+    st.session_state.history = History()
+
+history: History = st.session_state.history
+
+
+def render_grouped_bar_chart(
+    df: pd.DataFrame,
+    str_columns: typing.List[str],
+    numeric_columns: typing.List[str],
+) -> bool:
+    if len(str_columns) > 2:
+        return False
+
+    params = {}
+    if len(str_columns) == 2:
+
+        params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
+        params["color"] = (
+            "Series:N" if len(numeric_columns) > 1 else f"{str_columns[1]}:N"
+        )
+
+        if len(numeric_columns) > 1:
+            params["column"] = f"{str_columns[1]}:N"
+
+    else:
+        params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
+        params["color"] = (
+            "Series:N" if len(numeric_columns) > 1 else f"{str_columns[0]}:N"
+        )
+
+    if len(numeric_columns) == 1:
+        params["y"] = alt.Y("Value:Q", title=numeric_columns[0])
+
+    else:
+        params["y"] = alt.Y("Value:Q")
+        params["xOffset"] = alt.XOffset("Series:N")
+
+    # Melt the DataFrame to convert wide format into long format for grouped bars
+    df = df.melt(
+        id_vars=str_columns,
+        value_vars=numeric_columns,
+        var_name="Series",
+        value_name="Value",
+    )
+
+    # Create the Altair grouped bar chart using the index as the x-axis
+    chart = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(**params)
+        .resolve_scale(y="shared")  # Ensure that y-axes across columns are shared
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+    return True
+
+
+def get_possible_date_columns(df: pd.DataFrame) -> typing.List[str]:
+    date_columns = []
+    for col in df.select_dtypes(include="object").columns:
+        try:
+            # Try converting the column to datetime
+            df[col] = pd.to_datetime(
+                df[col],
+                errors="raise",
+                infer_datetime_format=True,
+            )
+            # If successful, record the column as a date column
+            date_columns.append(col)
+        except (ValueError, TypeError):
+            # If conversion fails, the column is not a date
+            pass
+    return date_columns
+
+
 def render_chart(df: pd.DataFrame) -> bool:
-    # pylint: disable=too-many-branches,too-many-statements
 
     if len(df) == 0:
         return False
-
-    def render_grouped_bar_chart(
-        df: pd.DataFrame,
-        str_columns: typing.List[str],
-        numeric_columns: typing.List[str],
-    ) -> bool:
-        if len(str_columns) > 2:
-            return False
-
-        params = {}
-        if len(str_columns) == 2:
-
-            params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
-            params["color"] = (
-                "Series:N" if len(numeric_columns) > 1 else f"{str_columns[1]}:N"
-            )
-
-            if len(numeric_columns) > 1:
-                params["column"] = f"{str_columns[1]}:N"
-
-        else:
-            params["x"] = alt.X(f"{str_columns[0]}:N", title=None)
-            params["color"] = (
-                "Series:N" if len(numeric_columns) > 1 else f"{str_columns[0]}:N"
-            )
-
-        if len(numeric_columns) == 1:
-            params["y"] = alt.Y("Value:Q", title=numeric_columns[0])
-
-        else:
-            params["y"] = alt.Y("Value:Q")
-            params["xOffset"] = alt.XOffset("Series:N")
-
-        # Melt the DataFrame to convert wide format into long format for grouped bars
-        df = df.melt(
-            id_vars=str_columns,
-            value_vars=numeric_columns,
-            var_name="Series",
-            value_name="Value",
-        )
-
-        # Create the Altair grouped bar chart using the index as the x-axis
-        chart = (
-            alt.Chart(df)
-            .mark_bar()
-            .encode(**params)
-            .resolve_scale(y="shared")  # Ensure that y-axes across columns are shared
-        )
-
-        st.altair_chart(chart, use_container_width=True)
-
-        return True
-
-    def get_possible_date_columns(df: pd.DataFrame) -> typing.List[str]:
-        date_columns = []
-        for col in df.select_dtypes(include="object").columns:
-            try:
-                # Try converting the column to datetime
-                df[col] = pd.to_datetime(
-                    df[col],
-                    errors="raise",
-                    infer_datetime_format=True,
-                )
-                # If successful, record the column as a date column
-                date_columns.append(col)
-            except (ValueError, TypeError):
-                # If conversion fails, the column is not a date
-                pass
-        return date_columns
 
     # Bug in streamlit with dots in column names - update column names
     updated_columns = {col: col.replace(".", "_") for col in df.columns}
@@ -252,9 +471,7 @@ def render_chart(df: pd.DataFrame) -> bool:
 def render_dataframe(df: pd.DataFrame) -> None:
     if len(df) == 0:
         st.markdown("No data available to display. Please refine your question.")
-
     st.dataframe(df)
-
     if len(df) > 0:
         csv = typing.cast(bytes, df.to_csv().encode("utf-8"))
         st.download_button(
@@ -267,12 +484,12 @@ def render_dataframe(df: pd.DataFrame) -> None:
 
 
 @supress_failures
-def render_content(
+def render_message(
+    message: typing.Dict[str, typing.Any],
     parent: typing.Any,
-    content: typing.Any,
-) -> typing.Any:
+) -> Optional[Any]:
 
-    def find_item(json_data: typing.Any, search_str: str) -> typing.Any:
+    def find_item(json_data: typing.Any, search_str: str) -> Optional[typing.Any]:
         # Split the search string into entity and name components
         entity, name = search_str.split(".")
 
@@ -317,20 +534,19 @@ def render_content(
 
         return r
 
-    if str(content["type"]) == HistoryItemTypes.USER:
-        parent = parent.chat_message(content["role"], avatar="🧑‍💻")
+    if message["type"] == TYPE_ASSISTANT_INIT:
+        parent = parent.chat_message(ROLE_ASSISTANT, avatar=HONEYDEW_ICON_URL)
 
-    if str(content["type"]) == HistoryItemTypes.ASSISTANT_INIT:
-        parent = parent.chat_message(content["role"], avatar=HONEYDEW_ICON_URL)
+    if message["type"] == TYPE_USER_MESSAGE:
+        parent = parent.chat_message(ROLE_USER, avatar="🧑‍💻")
 
-    if content["text"] is not None:
-        parent.markdown(content["text"])
+    if message["text"] is not None:
+        parent.markdown(message["text"])
 
-    if str(content["type"]) == HistoryItemTypes.QUERY_RESULT:
-        df = content["data"]
-        df = df.round(2)
-        json_query = content["json_query"]
-        sql_query = content["sql_query"]
+    if message["type"] == TYPE_QUERY_RESULT:
+        df = message["data"]
+        json_query = message["json_query"]
+        sql_query = message["sql_query"]
 
         tab_names = ["Chart", "Data"]
         if SHOW_EXPLAIN_QUERY:
@@ -343,7 +559,7 @@ def render_content(
 
         with chart_tab:
             if not render_chart(df):
-                render_dataframe(df)
+                st.dataframe(df)
 
         with data_tab:
             render_dataframe(df)
@@ -368,144 +584,77 @@ def render_content(
         if SHOW_SQL_QUERY:
             with hd_sql_tab:
                 st.markdown(f"```sql{sql_query}```")
-
     return parent
 
 
-def ask(
-    question: str,
-) -> typing.Dict[str, typing.Any]:
-    try:
-        sql = f"""select {HD_APP}.API.ASK_QUESTION(
-                    workspace => '{HD_WORKSPACE}',
-                    branch => '{HD_BRANCH}',
-                    question => '{question}',
-                    domain => '{HD_DOMAIN}',
-                    cortex_llm_name => '{CORTEX_LLM}',
-                    default_results_limit => {RESULTS_LIMIT}) as response"""
-
-        data = session.sql(sql)
-
-        return typing.cast(
-            typing.Dict[str, typing.Any],
-            json.loads(data.collect()[0].as_dict()["RESPONSE"]),
-        )
-
-    except Exception as exp:  # pylint: disable=broad-except
-        st.error(f"Failed:\n{exp}")
-
-    return {}
-
-
 @supress_failures
-def run_query_flow(user_question: str) -> None:
+def process_user_question(user_question: str) -> None:
 
-    def render_history_item(  # pylint: disable=too-many-arguments
-        *,
-        parent: typing.Any,
-        history_item_type: str,
-        role: str,
-        text: typing.Optional[str] = None,
-        data: typing.Optional[typing.Any] = None,
-        json_query: typing.Optional[typing.Any] = None,
-        sql_query: typing.Optional[str] = None,
-    ) -> typing.Any:
-
-        item = {
-            "type": history_item_type,
-            "role": role,
-            "text": text,
-        }
-
-        if data is not None:
-            item["data"] = data
-
-        if json_query is not None:
-            item["json_query"] = json_query
-
-        if sql_query is not None:
-            item["sql_query"] = sql_query
-
-        st.session_state.history.append(item)
-        return render_content(parent, item)
-
-    render_history_item(
-        parent=st,
-        history_item_type=HistoryItemTypes.USER,
-        role=Roles.USER,
-        text=user_question,
-    )
-
-    parent = render_history_item(
-        parent=st,
-        history_item_type=HistoryItemTypes.ASSISTANT_INIT,
-        role=Roles.ASSISTANT,
-    )
-    container = parent.container()
-    stat_parent = parent.empty()
-    stat = stat_parent.status(label="Analyzing the question..", state="running")
-
+    history_clone = history.messages[:]
+    stat = None
     try:
-        # executing Honeydew
-        hdresponse = ask(user_question)
+        render_message(history.push_user_message(user_question), st)
+        parent = render_message(history.push_assistant_init(), st)
 
-        # showing unexepcted error
+        container = parent.container()
+        stat_parent = parent.empty()
+        stat = stat_parent.status(label="Running..", state="running")
+
+        # executing Honeydew
+        hdresponse = execute_hd_ask_question(
+            user_question,
+            h=history_clone,
+        )
         if "error" in hdresponse and hdresponse["error"] is not None:
-            render_history_item(
-                parent=container,
-                history_item_type=HistoryItemTypes.MARKDOWN,
-                role=Roles.ASSISTANT,
-                text=str(hdresponse["error"]),
-            )
+            render_message(history.push_assistant_error(hdresponse["error"]), container)
             return
 
-        # showing the LLM response
-        if "llm_response" in hdresponse:
-            render_history_item(
-                parent=container,
-                history_item_type=HistoryItemTypes.MARKDOWN,
-                role=Roles.ASSISTANT,
-                text=str(hdresponse["llm_response"]),
-            )
+        render_message(
+            history.push_assistant_llm_response(
+                message=hdresponse["llm_response"],
+                json_query=(
+                    json.loads(hdresponse["llm_response_json"])
+                    if "llm_response_json" in hdresponse
+                    else None
+                ),
+                append_json_to_ui=False,
+            ),
+            container,
+        )
 
-        # executing query
         if "sql" in hdresponse and hdresponse["sql"] is not None:
-            stat.update(label="Runninq Query..", state="running")
-            df = session.sql(str(hdresponse["sql"])).to_pandas()
-            render_history_item(
-                parent=container,
-                history_item_type=HistoryItemTypes.QUERY_RESULT,
-                role=Roles.ASSISTANT,
-                text="",
-                data=df,
-                json_query=hdresponse["perspective"],
-                sql_query=str(hdresponse["sql"]),
-            )
+            df = execute_sql_table(hdresponse["sql"])
+            df = df.round(2)
+            m = history.push_assistant_query_result(df)
+            m["json_query"] = hdresponse["perspective"]
+            m["sql_query"] = hdresponse["sql"]
+            render_message(m, container)
+
+            parent.divider()
 
     finally:
-        stat.update(label="Completed", state="complete")
+        if stat is not None:
+            stat.update(label="Completed", state="complete")
+            stat_parent.empty()
 
 
 #
 # Main flow
-if "history" not in st.session_state:
-    st.session_state.history = []
-
 st.title("Honeydew Analyst")
-st.markdown(f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`")
+st.markdown(
+    f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`",
+)
 
 parent_st = st
 
-if HISTORY_ENABLED:
-    for history_item in st.session_state.history:
-        if (
-            history_item["type"] == HistoryItemTypes.ASSISTANT_INIT
-            or history_item["type"] == HistoryItemTypes.USER
-        ):
-            parent_st = render_content(parent=st, content=history_item)
+for history_item in history.ui_model:
+    if (
+        history_item["type"] == TYPE_ASSISTANT_INIT
+        or history_item["type"] == TYPE_USER_MESSAGE
+    ):
+        parent_st = render_message(history_item, st)
+    else:
+        render_message(history_item, parent_st)
 
-        else:
-            render_content(parent=parent_st, content=history_item)
-
-if user_question_input := st.chat_input("Ask me.."):
-    run_query_flow(user_question_input)
+if user_question_input := st.chat_input(placeholder="Ask me.."):
+    process_user_question(user_question_input)
