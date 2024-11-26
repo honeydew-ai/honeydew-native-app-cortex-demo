@@ -70,7 +70,7 @@ def supress_failures(
     def func_without_errors(*args: typing.Any, **kw: typing.Any) -> typing.Any:
         try:
             return func(*args, **kw)
-        except Exception as exp:  # pylint: disable=broad-except
+        except Exception as exp:  # pylint: disable=broad-exception-caught
             if _DEBUG:
                 raise exp
 
@@ -98,7 +98,7 @@ def init() -> None:
 
         st.session_state.SESSION = get_active_session()
 
-    except Exception:  # pylint: disable=broad-except
+    except Exception:  # pylint: disable=broad-exception-caught
         # Load environment variables from .env file
         env.load_dotenv()
 
