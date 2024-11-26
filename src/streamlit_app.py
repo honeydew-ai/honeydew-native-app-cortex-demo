@@ -22,12 +22,12 @@
 # SOFTWARE.
 ####################################################################################
 
+import enum
 import json
 import os
 import re
 import typing
 import uuid
-from typing import Any, Callable, Dict, Optional
 
 import altair as alt
 import dotenv as env
@@ -37,6 +37,12 @@ import streamlit as st
 
 # Constants
 
+#
+# Honeydew related settings
+HD_APP = "SEMANTIC_LAYER_ENTERPRISE_EDITION"  # Name of installed Native Application
+HD_WORKSPACE = "tpch_demo"  # Honeydew model
+HD_BRANCH = "prod"  # Honeydew branch
+HD_DOMAIN = "llm"  # Honeydew domain
 
 #
 # Behavior & UI  settings
@@ -44,13 +50,16 @@ HISTORY_ENABLED = True  # Display chat history
 SHOW_SQL_QUERY = 1  # Display SQL tab
 SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 
-HD_WORKSPACE = "tasty_bytes"  # Honeydew model
-HD_APP = "HONEYDEW_APP"  # Name of installed Native Application
-HD_BRANCH = "prod"  # Honeydew branch
-HD_DOMAIN = "llm"  # Honeydew domain
-
 # Set to '1' to see debug messages
 _DEBUG = 1
+
+# Cortex LLM
+CORTEX_LLM = "llama3.1-405b"
+# CORTEX_LLM = "mistral-large2"
+
+# Results limit
+RESULTS_LIMIT = 10000
+
 
 HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
 
@@ -60,12 +69,12 @@ env.load_dotenv()
 
 
 def supress_failures(
-    func: Callable[..., Any],
-) -> Callable[..., Any]:
-    def func_without_errors(*args: Any, **kw: Any) -> Any:
+    func: typing.Callable[..., typing.Any],
+) -> typing.Callable[..., typing.Any]:
+    def func_without_errors(*args: typing.Any, **kw: typing.Any) -> typing.Any:
         try:
             return func(*args, **kw)
-        except Exception as exp:
+        except Exception as exp:  # pylint: disable=broad-except
             if _DEBUG:
                 raise exp
 
@@ -87,12 +96,14 @@ def init() -> None:
         return
 
     try:
-        from snowflake.snowpark.context import get_active_session
+        from snowflake.snowpark.context import (  # pylint: disable=import-outside-toplevel
+            get_active_session,
+        )
 
         st.session_state.SESSION = get_active_session()
 
-    except Exception:
-        st.session_state.CONECTION = snowflake.connector.connect(
+    except Exception:  # pylint: disable=broad-except
+        st.session_state.CONNECTION = snowflake.connector.connect(
             user=os.getenv("SF_USER"),
             password=os.getenv("SF_PASSWORD"),
             account=os.getenv("SF_ACCOUNT"),
@@ -101,7 +112,7 @@ def init() -> None:
             warehouse=os.getenv("SF_WAREHOUSE"),
             role=os.getenv("SF_ROLE"),
         )
-        st.session_state.CONECTION.cursor().execute(
+        st.session_state.CONNECTION.cursor().execute(
             f"USE WAREHOUSE {os.getenv('SF_WAREHOUSE')}",
         )
 
@@ -114,41 +125,34 @@ def encode(str_val: str) -> str:
 
 
 def execute_sql(sql: str) -> typing.Any:
-    if (sql is None) or (sql == ""):
-        raise Exception("SQL is empty")
+    assert sql is not None and len(sql) > 0, "SQL is empty"
 
-    r = None
     if "SESSION" in st.session_state:
-        r = st.session_state.SESSION.sql(sql).collect()
+        res = st.session_state.SESSION.sql(sql).collect()
 
-    elif "CONECTION" in st.session_state:
-        r = st.session_state.CONECTION.cursor().execute(sql).fetchall()
     else:
-        raise Exception("No session / connection")
+        assert "CONNECTION" in st.session_state, "No session / connection"
+        res = st.session_state.CONNECTION.cursor().execute(sql).fetchall()
 
-    return r
+    return res
 
 
 def execute_sql_table(sql: str) -> typing.Any:
-    if (sql is None) or (sql == ""):
-        raise Exception("SQL is empty")
+    assert sql is not None and len(sql) > 0, "SQL is empty"
 
-    r = None
     if "SESSION" in st.session_state:
-        r = st.session_state.SESSION.sql(sql).to_pandas()
-
-    elif "CONECTION" in st.session_state:
-        r = st.session_state.CONECTION.cursor().execute(sql).fetch_pandas_all()
+        res = st.session_state.SESSION.sql(sql).to_pandas()
     else:
-        raise Exception("No session / connection")
+        assert "CONNECTION" in st.session_state, "No session / connection"
+        res = st.session_state.CONNECTION.cursor().execute(sql).fetch_pandas_all()
 
-    return r
+    return res
 
 
 def execute_llm(
     messages: typing.List[str],
     temperature: float = 0.2,
-    max_tokens: float = 8096,
+    max_tokens: float = 8192,
 ) -> typing.Any:
 
     def extract_message(t: str) -> str:
@@ -180,7 +184,7 @@ def execute_llm(
 def execute_hd_ask_question(
     question: str,
     h: typing.List[str],
-) -> Any:
+) -> typing.Any:
 
     sql = f"""select {HD_APP}.API.ASK_QUESTION(
                 workspace => '{HD_WORKSPACE}',
@@ -199,105 +203,119 @@ init()
 #
 # Chat History
 
-ROLE_USER = "user"
-ROLE_ASSISTANT = "assistant"
-ROLE_SYSTEM = "system"
-TYPE_QUERY_RESULT = "assistant_query_result"
-TYPE_ASSISTANT_INIT = "assistant_init"
-TYPE_USER_MESSAGE = "user"
-TYPE_ASSISTANT_MESSAGE = "assistant_message"
-TYPE_LLM_RESPONSE = "assistant_llm_response"
-TYPE_ERROR = "assistant_error"
+
+class HistoryItemTypes(enum.Enum):  # pylint: disable=too-few-public-methods
+    ASSISTANT_INIT = "assistant_init"
+    ASSISTANT_MESSAGE = "assistant_message"
+    ERROR = "assistant_error"
+    LLM_RESPONSE = "assistant_llm_response"
+    QUERY_RESULT = "assistant_query_result"
+    USER_MESSAGE = "user"
+
+
+class Roles(enum.Enum):  # pylint: disable=too-few-public-methods
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
 
 
 class History:
-    def __init__(self, name: Optional[str] = None, system_prompt: Optional[str] = None):
-        self.messages: typing.List[Any] = []
-        self.ui_model: typing.List[Dict[str, Any]] = []
+    def __init__(
+        self,
+        name: typing.Optional[str] = None,
+        system_prompt: typing.Optional[str] = None,
+    ):
+        self.messages: typing.List[typing.Any] = []
+        self.ui_model: typing.List[typing.Dict[str, typing.Any]] = []
         self.name = name
         if system_prompt is not None and system_prompt != "":
             self.push_system_message(encode(system_prompt))
 
-    def push_system_message(self, m: str) -> None:
-        if m is not None and m != "":
+    def push_system_message(self, msg: str) -> None:
+        if msg is not None and msg != "":
             self.messages.append(
-                f"""{{'role':'{ROLE_SYSTEM}', 'content': '{m}'}}""",
+                f"""{{'role':'{Roles.SYSTEM.value}', 'content': '{msg}'}}""",
             )
 
-    def to_llm_message(self, m: Dict[str, Any]) -> str:
-        return f"""{{'role':'{m["role"]}', 'content': '{encode(m['text'])}'}}"""
+    def to_llm_message(self, msg: typing.Dict[str, typing.Any]) -> str:
+        return (
+            f"""{{'role':'{msg["role"].value}', 'content': '{encode(msg['text'])}'}}"""
+        )
 
-    def push_assistant_init(self) -> Dict[str, Any]:
-        m = {
-            "type": TYPE_ASSISTANT_INIT,
-            "role": ROLE_ASSISTANT,
+    def push_assistant_init(self) -> typing.Dict[str, typing.Any]:
+        msg = {
+            "type": HistoryItemTypes.ASSISTANT_INIT,
+            "role": Roles.ASSISTANT,
             "text": "Got it, please wait a sec.",
         }
 
-        self.ui_model.append(m)
-        return m
+        self.ui_model.append(msg)
+        return msg
 
     def push_assistant_error(
         self,
         error: str,
-    ) -> Dict[str, Any]:
+    ) -> typing.Dict[str, typing.Any]:
 
-        m = {
-            "type": TYPE_ERROR,
-            "role": ROLE_ASSISTANT,
+        msg = {
+            "type": HistoryItemTypes.ERROR,
+            "role": Roles.ASSISTANT,
             "text": f"\n{error}\n",
         }
 
         # self.messages.append(self.to_llm_message(m))
-        self.ui_model.append(m)
+        self.ui_model.append(msg)
 
-        return m
+        return msg
 
     def push_assistant_llm_response(
         self,
         message: str,
-        json_query: Optional[typing.Any] = None,
+        json_query: typing.Optional[typing.Any] = None,
         append_json_to_ui: bool = True,
-    ) -> typing.Dict[str, Any]:
-        m = {
-            "type": TYPE_LLM_RESPONSE,
-            "role": ROLE_ASSISTANT,
+    ) -> typing.Dict[str, typing.Any]:
+        msg = {
+            "type": HistoryItemTypes.LLM_RESPONSE,
+            "role": Roles.ASSISTANT,
             "json_query": json_query,
             "text": f"""\n{message}\n```json\n{json.dumps(json_query)}\n```""",
         }
 
-        self.messages.append(self.to_llm_message(m))
+        self.messages.append(self.to_llm_message(msg))
 
         if not append_json_to_ui:
-            m["text"] = f"\n{message}\n"
+            msg["text"] = f"\n{message}\n"
 
-        self.ui_model.append(m)
+        self.ui_model.append(msg)
 
-        return m
+        return msg
 
-    def push_assistant_query_result(self, df: Any) -> Dict[str, Any]:
-        m = {
-            "type": TYPE_QUERY_RESULT,
-            "role": ROLE_ASSISTANT,
+    def push_assistant_query_result(
+        self,
+        df: typing.Any,
+    ) -> typing.Dict[str, typing.Any]:
+        msg = {
+            "type": HistoryItemTypes.QUERY_RESULT,
+            "role": Roles.ASSISTANT,
             "data": df,
             "text": "",
         }
 
-        self.ui_model.append(m)
+        self.ui_model.append(msg)
 
-        return m
+        return msg
 
-    def push_user_message(self, message: str) -> typing.Dict[str, Any]:
-        m = {
-            "type": TYPE_USER_MESSAGE,
-            "role": ROLE_USER,
+    def push_user_message(self, message: str) -> typing.Dict[str, typing.Any]:
+        msg = {
+            "type": HistoryItemTypes.USER_MESSAGE,
+            "role": Roles.USER,
             "text": message,
         }
 
-        self.messages.append(self.to_llm_message(m))
-        self.ui_model.append(m)
+        self.messages.append(self.to_llm_message(msg))
+        self.ui_model.append(msg)
 
-        return m
+        return msg
 
 
 # # Application
@@ -380,6 +398,7 @@ def get_possible_date_columns(df: pd.DataFrame) -> typing.List[str]:
 
 
 def render_chart(df: pd.DataFrame) -> bool:
+    # pylint: disable=too-many-branches
 
     if len(df) == 0:
         return False
@@ -487,9 +506,12 @@ def render_dataframe(df: pd.DataFrame) -> None:
 def render_message(
     message: typing.Dict[str, typing.Any],
     parent: typing.Any,
-) -> Optional[Any]:
+) -> typing.Optional[typing.Any]:
 
-    def find_item(json_data: typing.Any, search_str: str) -> Optional[typing.Any]:
+    def find_item(
+        json_data: typing.Any,
+        search_str: str,
+    ) -> typing.Optional[typing.Any]:
         # Split the search string into entity and name components
         entity, name = search_str.split(".")
 
@@ -534,16 +556,19 @@ def render_message(
 
         return r
 
-    if message["type"] == TYPE_ASSISTANT_INIT:
-        parent = parent.chat_message(ROLE_ASSISTANT, avatar=HONEYDEW_ICON_URL)
+    if message["type"] == HistoryItemTypes.ASSISTANT_INIT:
+        parent = parent.chat_message(
+            Roles.ASSISTANT.value,
+            avatar=HONEYDEW_ICON_URL,
+        )
 
-    if message["type"] == TYPE_USER_MESSAGE:
-        parent = parent.chat_message(ROLE_USER, avatar="🧑‍💻")
+    if message["type"] == HistoryItemTypes.USER_MESSAGE:
+        parent = parent.chat_message(Roles.USER.value, avatar="🧑‍💻")
 
     if message["text"] is not None:
         parent.markdown(message["text"])
 
-    if message["type"] == TYPE_QUERY_RESULT:
+    if message["type"] == HistoryItemTypes.QUERY_RESULT:
         df = message["data"]
         json_query = message["json_query"]
         sql_query = message["sql_query"]
@@ -625,10 +650,10 @@ def process_user_question(user_question: str) -> None:
         if "sql" in hdresponse and hdresponse["sql"] is not None:
             df = execute_sql_table(hdresponse["sql"])
             df = df.round(2)
-            m = history.push_assistant_query_result(df)
-            m["json_query"] = hdresponse["perspective"]
-            m["sql_query"] = hdresponse["sql"]
-            render_message(m, container)
+            msg = history.push_assistant_query_result(df)
+            msg["json_query"] = hdresponse["perspective"]
+            msg["sql_query"] = hdresponse["sql"]
+            render_message(msg, container)
 
             parent.divider()
 
@@ -648,9 +673,9 @@ st.markdown(
 parent_st = st
 
 for history_item in history.ui_model:
-    if (
-        history_item["type"] == TYPE_ASSISTANT_INIT
-        or history_item["type"] == TYPE_USER_MESSAGE
+    if history_item["type"] in (
+        HistoryItemTypes.ASSISTANT_INIT,
+        HistoryItemTypes.USER_MESSAGE,
     ):
         parent_st = render_message(history_item, st)
     else:
