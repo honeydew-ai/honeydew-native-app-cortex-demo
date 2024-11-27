@@ -243,14 +243,12 @@ class History:
             )
 
     def to_llm_message(self, msg: typing.Dict[str, typing.Any]) -> str:
-        return (
-            f"""{{'role':'{msg["role"].value}', 'content': '{encode(msg['text'])}'}}"""
-        )
+        return f"""{{'role':'{msg["role"]}', 'content': '{encode(msg['text'])}'}}"""
 
     def push_assistant_init(self) -> typing.Dict[str, typing.Any]:
         msg = {
-            "type": HistoryItemTypes.ASSISTANT_INIT,
-            "role": Roles.ASSISTANT,
+            "type": HistoryItemTypes.ASSISTANT_INIT.value,
+            "role": Roles.ASSISTANT.value,
             "text": "Got it, please wait a sec.",
         }
 
@@ -263,8 +261,8 @@ class History:
     ) -> typing.Dict[str, typing.Any]:
 
         msg = {
-            "type": HistoryItemTypes.ERROR,
-            "role": Roles.ASSISTANT,
+            "type": HistoryItemTypes.ERROR.value,
+            "role": Roles.ASSISTANT.value,
             "text": f"\n{error}\n",
         }
 
@@ -280,8 +278,8 @@ class History:
         append_json_to_ui: bool = True,
     ) -> typing.Dict[str, typing.Any]:
         msg = {
-            "type": HistoryItemTypes.LLM_RESPONSE,
-            "role": Roles.ASSISTANT,
+            "type": HistoryItemTypes.LLM_RESPONSE.value,
+            "role": Roles.ASSISTANT.value,
             "json_query": json_query,
             "text": f"""\n{message}\n```json\n{json.dumps(json_query)}\n```""",
         }
@@ -300,8 +298,8 @@ class History:
         df: typing.Any,
     ) -> typing.Dict[str, typing.Any]:
         msg = {
-            "type": HistoryItemTypes.QUERY_RESULT,
-            "role": Roles.ASSISTANT,
+            "type": HistoryItemTypes.QUERY_RESULT.value,
+            "role": Roles.ASSISTANT.value,
             "data": df,
             "text": "",
         }
@@ -312,8 +310,8 @@ class History:
 
     def push_user_message(self, message: str) -> typing.Dict[str, typing.Any]:
         msg = {
-            "type": HistoryItemTypes.USER_MESSAGE,
-            "role": Roles.USER,
+            "type": HistoryItemTypes.USER_MESSAGE.value,
+            "role": Roles.USER.value,
             "text": message,
         }
 
@@ -565,19 +563,19 @@ def render_message(
 
         return r
 
-    if message["type"] == HistoryItemTypes.ASSISTANT_INIT:
+    if message["type"] == HistoryItemTypes.ASSISTANT_INIT.value:
         parent = parent.chat_message(
             Roles.ASSISTANT.value,
             avatar=HONEYDEW_ICON_URL,
         )
 
-    if message["type"] == HistoryItemTypes.USER_MESSAGE:
+    if message["type"] == HistoryItemTypes.USER_MESSAGE.value:
         parent = parent.chat_message(Roles.USER.value, avatar="🧑‍💻")
 
     if message["text"] is not None:
         parent.markdown(message["text"])
 
-    if message["type"] == HistoryItemTypes.QUERY_RESULT:
+    if message["type"] == HistoryItemTypes.QUERY_RESULT.value:
         df = message["data"]
         json_query = message["json_query"]
         sql_query = message["sql_query"]
@@ -683,8 +681,8 @@ parent_st = st
 
 for history_item in history.ui_model:
     if history_item["type"] in (
-        HistoryItemTypes.ASSISTANT_INIT,
-        HistoryItemTypes.USER_MESSAGE,
+        HistoryItemTypes.ASSISTANT_INIT.value,
+        HistoryItemTypes.USER_MESSAGE.value,
     ):
         parent_st = render_message(history_item, st)
     else:
