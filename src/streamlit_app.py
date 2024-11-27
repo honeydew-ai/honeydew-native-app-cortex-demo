@@ -22,6 +22,7 @@
 # SOFTWARE.
 ####################################################################################
 
+import collections
 import enum
 import json
 import os
@@ -382,62 +383,76 @@ def render_grouped_bar_chart(
     return True
 
 
-def get_possible_date_columns(df: pd.DataFrame) -> typing.List[str]:
-    date_columns = []
-    for col in df.select_dtypes(include="object").columns:
-        try:
-            # Try converting the column to datetime
-            df[col] = pd.to_datetime(
-                df[col],
-                errors="raise",
-                infer_datetime_format=True,
-            )
-            # If successful, record the column as a date column
-            date_columns.append(col)
-        except (ValueError, TypeError):
-            # If conversion fails, the column is not a date
-            pass
-    return date_columns
+def _fix_column_name_for_chart(col: str) -> str:
+    return col.replace(".", "_")
 
 
-def render_chart(df: pd.DataFrame) -> bool:
-    # pylint: disable=too-many-branches
+def _get_columns_and_types(
+    json_query: typing.Dict[str, typing.Any],
+    section: str,
+) -> typing.OrderedDict[str, str]:
+    columns = [
+        _fix_column_name_for_chart(typing.cast(str, col)) for col in json_query[section]
+    ]
+    types = [
+        typing.cast(str, comp["datatype"]) for comp in json_query["components"][section]
+    ]
+    return collections.OrderedDict(zip(columns, types))
+
+
+def render_chart(df: pd.DataFrame, json_query: typing.Dict[str, typing.Any]) -> bool:
+    # pylint: disable=too-many-branches,too-many-return-statements
 
     if len(df) == 0:
         return False
 
-    # Bug in streamlit with dots in column names - update column names
-    updated_columns = {col: col.replace(".", "_") for col in df.columns}
-    df = df.rename(columns=updated_columns)
-    numeric_columns = list(df.select_dtypes(include=["number"]).columns)
+    metrics = _get_columns_and_types(json_query, "metrics")
+    attributes = _get_columns_and_types(json_query, "attributes")
 
-    if len(numeric_columns) == 0:
-        st.markdown("Chart currently not available for non-numeric data")
+    if len(metrics) == 0:
+        # No chart when there are no metrics to show
+        return False
+
+    # Bug in streamlit with dots in column names - update column names
+    updated_columns = {col: _fix_column_name_for_chart(col) for col in df.columns}
+    df = df.rename(columns=updated_columns)
+
+    if set(metrics.values()) - {"number", "float"}:
+        st.markdown("Chart currently not available for non-numeric metrics")
         return False
 
     # Bug in snowflake connector - does not set date types correctly in pandas, so manually detecting
-    date_columns = get_possible_date_columns(df)
-    str_columns = df.select_dtypes(include=["object"]).columns
-    str_columns = [col for col in str_columns if col not in date_columns]
-    df_to_show = df[numeric_columns + str_columns]
+    date_columns = [
+        col for col, col_type in attributes.items() if col_type in ("date", "timestamp")
+    ]
+    dim_columns = [col for col in attributes if col not in date_columns]
+    metric_columns = list(metrics.keys())
+    df_to_show = df[metric_columns]
 
-    for col in date_columns[:1]:
+    for col in date_columns:
+        # Fix datatype - as Snowflake returns dates as objects
         df_to_show[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # date
+    for col in dim_columns:
+        # Show all dimensions as strings
+        df_to_show[col] = df[col].astype(str)
+
+    # date dimension
     if len(date_columns) > 0:
         df_to_show = df_to_show.rename(columns={date_columns[0]: "index"}).set_index(
             "index",
         )
 
-        if len(str_columns) == 0:
+        if len(dim_columns) == 0:
             st.line_chart(df_to_show)
-        elif len(str_columns) == 1 and len(numeric_columns) == 1:
-            st.line_chart(df_to_show, y=numeric_columns[0], color=str_columns[0])
+        elif len(dim_columns) == 1 and len(metric_columns) == 1:
+            st.line_chart(df_to_show, y=metric_columns[0], color=dim_columns[0])
+        else:
+            return False
 
-    # text
-    elif len(str_columns) >= 1:
-        metric_column = numeric_columns[0]  # First numeric column
+    # dimensions
+    elif len(dim_columns) >= 1:
+        metric_column = metric_columns[0]  # First numeric column
 
         if len(df_to_show) > 50:
             st.markdown(f"**Showing top 50 values sorted by {metric_column}**")
@@ -445,43 +460,37 @@ def render_chart(df: pd.DataFrame) -> bool:
                 50,
             )
 
-        if len(str_columns) == 1:
+        if len(dim_columns) == 1 and len(metric_columns) == 1:
             chart = (
                 alt.Chart(df_to_show)
                 .mark_bar()
                 .encode(
                     y=alt.X(
-                        str_columns[0],
+                        dim_columns[0],
                         sort=alt.EncodingSortField(
                             field=metric_column,
                             order="descending",
                         ),
                     ),
-                    x=alt.Y(numeric_columns[0]),
-                    color=alt.Color(str_columns[0], legend=None),  # Hide legend
+                    x=alt.Y(metric_columns[0]),
+                    color=alt.Color(dim_columns[0], legend=None),  # Hide legend
                 )
             )
 
             st.altair_chart(chart, use_container_width=True)
 
         else:
-            return render_grouped_bar_chart(df_to_show, str_columns, numeric_columns)
+            return render_grouped_bar_chart(df_to_show, dim_columns, metric_columns)
 
-    # multiple numeric
-    elif len(numeric_columns) > 1:
-        return render_grouped_bar_chart(
-            df_to_show,
-            [numeric_columns[0]],
-            numeric_columns[1:],
-        )
-
-    # single numeric
-    elif len(numeric_columns) == 1:
+    # just metrics
+    elif len(dim_columns) == 0 and len(date_columns) == 0:
         if len(df_to_show) == 1:
-            value = f"{df[numeric_columns[0]].iloc[0]:,}"
-            st.metric(label=numeric_columns[0], value=value)
+            for metric_column in metric_columns:
+                value = f"{df[metric_column].iloc[0]:,}"
+                st.metric(label=metric_column, value=value)
         else:
-            st.bar_chart(df_to_show)
+            # can only happen with partial metrics and no grouping given
+            return False
 
     else:
         st.markdown("Chart currently not available")
@@ -590,7 +599,7 @@ def render_message(
         chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(tab_names)
 
         with chart_tab:
-            if not render_chart(df):
+            if not render_chart(df, json_query):
                 st.dataframe(df)
 
         with data_tab:
