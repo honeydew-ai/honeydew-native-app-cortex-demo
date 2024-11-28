@@ -486,8 +486,9 @@ def render_chart(df: pd.DataFrame, json_query: typing.Dict[str, typing.Any]) -> 
     elif len(dim_columns) == 0 and len(date_columns) == 0:
         if len(df_to_show) == 1:
             for metric_column in metric_columns:
-                value = f"{df[metric_column].iloc[0]:,}"
-                st.metric(label=metric_column, value=value)
+                value = df_to_show[metric_column].iloc[0]
+                value_str = "No data" if pd.isna(value) else f"{value:,}"
+                st.metric(label=metric_column, value=value_str)
         else:
             # can only happen with partial metrics and no grouping given
             return False
@@ -502,7 +503,7 @@ def render_chart(df: pd.DataFrame, json_query: typing.Dict[str, typing.Any]) -> 
 def render_dataframe(df: pd.DataFrame) -> None:
     if len(df) == 0:
         st.markdown("No data available to display. Please refine your question.")
-    st.dataframe(df)
+    st.dataframe(df.fillna("No data"))
     if len(df) > 0:
         csv = typing.cast(bytes, df.to_csv().encode("utf-8"))
         st.download_button(
@@ -600,7 +601,7 @@ def render_message(
 
         with chart_tab:
             if not render_chart(df, json_query):
-                st.dataframe(df)
+                render_dataframe(df)
 
         with data_tab:
             render_dataframe(df)
