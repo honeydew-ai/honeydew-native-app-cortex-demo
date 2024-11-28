@@ -655,7 +655,7 @@ def process_user_question(user_question: str) -> None:
                 message=hdresponse["llm_response"],
                 json_query=(
                     json.loads(hdresponse["llm_response_json"])
-                    if "llm_response_json" in hdresponse
+                    if hdresponse.get("llm_response_json")
                     else None
                 ),
                 append_json_to_ui=False,
