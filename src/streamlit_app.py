@@ -624,7 +624,7 @@ def render_message(
 
         if SHOW_SQL_QUERY:
             with hd_sql_tab:
-                st.markdown(f"```sql{sql_query}```")
+                st.markdown(f"```sql{sql_query}\n```")
     return parent
 
 
