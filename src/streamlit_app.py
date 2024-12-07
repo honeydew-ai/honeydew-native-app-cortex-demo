@@ -298,12 +298,29 @@ class History:
         self,
         df: typing.Any,
     ) -> typing.Dict[str, typing.Any]:
+        key = str(uuid.uuid4())[:8]
         msg = {
             "type": HistoryItemTypes.QUERY_RESULT.value,
             "role": Roles.ASSISTANT.value,
             "data": df,
+            "key": key,
             "text": "",
         }
+
+        json_data = {
+            "headers": df.columns.tolist(),
+            "data": df.values.tolist(),
+        }
+
+        # Wrap it in a Markdown code block
+        self.messages.append(
+            self.to_llm_message(
+                {
+                    "role": Roles.ASSISTANT.value,
+                    "text": f"# JSON DataTable Key = {key}\n```json\n{json.dumps(json_data, default=str)}\n```",
+                },
+            ),
+        )
 
         self.ui_model.append(msg)
 
