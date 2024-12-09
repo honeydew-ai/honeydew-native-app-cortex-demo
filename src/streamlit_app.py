@@ -310,7 +310,7 @@ class History:
             "text": "",
         }
 
-        if 0 < len(df) < _MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION:
+        if len(df) < _MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION:
             json_data = {
                 "headers": df.columns.tolist(),
                 "data": df.values.tolist(),
