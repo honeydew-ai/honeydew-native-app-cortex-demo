@@ -63,6 +63,9 @@ RESULTS_LIMIT = 10000
 
 HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x.svg"
 
+_MAX_VALUES_TO_SHOW = 50
+_MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION = 50
+
 
 def supress_failures(
     func: typing.Callable[..., typing.Any],
@@ -298,12 +301,33 @@ class History:
         self,
         df: typing.Any,
     ) -> typing.Dict[str, typing.Any]:
+        key = str(uuid.uuid4())[:8]
         msg = {
             "type": HistoryItemTypes.QUERY_RESULT.value,
             "role": Roles.ASSISTANT.value,
             "data": df,
+            "key": key,
             "text": "",
         }
+
+        if len(df) < _MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION:
+            json_data = {
+                "headers": df.columns.tolist(),
+                "data": df.values.tolist(),
+            }
+
+            # Wrap it in a Markdown code block
+            self.messages.append(
+                self.to_llm_message(
+                    {
+                        "role": Roles.ASSISTANT.value,
+                        "text": (
+                            f"# JSON DataTable Key = {key}\n"
+                            f"```json\n{json.dumps(json_data, default=str)}\n```"
+                        ),
+                    },
+                ),
+            )
 
         self.ui_model.append(msg)
 
@@ -454,10 +478,12 @@ def render_chart(df: pd.DataFrame, json_query: typing.Dict[str, typing.Any]) -> 
     elif len(dim_columns) >= 1:
         metric_column = metric_columns[0]  # First numeric column
 
-        if len(df_to_show) > 50:
-            st.markdown(f"**Showing top 50 values sorted by {metric_column}**")
+        if len(df_to_show) > _MAX_VALUES_TO_SHOW:
+            st.markdown(
+                f"**Showing top {_MAX_VALUES_TO_SHOW} values sorted by {metric_column}**",
+            )
             df_to_show = df_to_show.sort_values(by=metric_column, ascending=False).head(
-                50,
+                _MAX_VALUES_TO_SHOW,
             )
 
         if len(dim_columns) == 1 and len(metric_columns) == 1:
@@ -682,9 +708,6 @@ def process_user_question(user_question: str) -> None:
             user_question,
             hist=history_clone,
         )
-        if "error" in hdresponse and hdresponse["error"] is not None:
-            render_message(history.push_assistant_error(hdresponse["error"]), container)
-            return
 
         render_message(
             history.push_assistant_llm_response(
@@ -698,6 +721,10 @@ def process_user_question(user_question: str) -> None:
             ),
             container,
         )
+
+        if "error" in hdresponse and hdresponse["error"] is not None:
+            render_message(history.push_assistant_error(hdresponse["error"]), container)
+            return
 
         if "sql" in hdresponse and hdresponse["sql"] is not None:
             df = execute_sql_table(hdresponse["sql"])
