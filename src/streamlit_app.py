@@ -520,6 +520,7 @@ def render_message(
     message: typing.Dict[str, typing.Any],
     parent: typing.Any,
 ) -> typing.Optional[typing.Any]:
+    # pylint: disable=too-many-statements
 
     def find_item(
         json_data: typing.Any,
@@ -535,12 +536,31 @@ def render_message(
                     return item
         return None
 
+    def get_order_item_caption(
+        json_data: typing.Any,
+        name: str,
+        order: str,
+    ) -> typing.Any:
+        parts = [" * "]
+
+        name = name.strip('"')
+        order = "ascending" if order == "asc" else "descending"
+
+        item = find_item(json_data, name)
+
+        if item is not None and item["ui_url"] is not None and item["ui_url"] != "":
+            parts.append(f"[{name}]({item['ui_url']}) ({order})")
+        else:
+            parts.append(f"`{name}` ({order})")
+
+        return "".join(parts)
+
     def get_item_caption(json_data: typing.Any, p: str, name: str) -> typing.Any:
         parts = [" * "]
 
         item = find_item(json_data, name)
 
-        if item is not None and item["ui_url"] is not None and item["ui_url"] != "":
+        if item is not None and item.get("ui_url") is not None and item["ui_url"] != "":
             parts.append(f" [{name}]({item['ui_url']})")
         elif p == "filters":
             parts.append(f"`{name}`")
@@ -561,15 +581,29 @@ def render_message(
         p: str,
         n: str,
     ) -> str:
-        if p not in question or question[p] is None or len(question[p]) == 0:
+        if (
+            p not in question
+            or question[p] is None
+            or (isinstance(question[p], list) and len(question[p]) == 0)
+        ):
             return ""
+
+        if isinstance(question[p], int):
+            return f"\n\n**{n}:** {question[p]}\n\n"
 
         r = f"\n\n**{n}:**\n\n"
         if isinstance(question[p], str):
             r += question[p]
-
         else:
-            r += "\n\n".join(get_item_caption(question, p, val) for val in question[p])
+            if p == "order":
+                r += "\n\n".join(
+                    get_order_item_caption(question, val["alias"], val["order"])
+                    for val in question[p]
+                )
+            else:
+                r += "\n\n".join(
+                    get_item_caption(question, p, val) for val in question[p]
+                )
 
         return r
 
@@ -618,7 +652,8 @@ def render_message(
                             ),
                             get_panel_description(json_query, "metrics", "Metrics"),
                             get_panel_description(json_query, "filters", "Filters"),
-                            #   get_panel_decription(json_query, "transform_sql", "Order"),
+                            get_panel_description(json_query, "order", "Order"),
+                            get_panel_description(json_query, "limit", "Limit"),
                         ],
                     ),
                 )
