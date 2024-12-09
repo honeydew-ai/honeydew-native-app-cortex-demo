@@ -560,7 +560,7 @@ def render_message(
 
         item = find_item(json_data, name)
 
-        if item is not None and item["ui_url"] is not None and item["ui_url"] != "":
+        if item is not None and item.get("ui_url") is not None and item["ui_url"] != "":
             parts.append(f" [{name}]({item['ui_url']})")
         elif p == "filters":
             parts.append(f"`{name}`")
