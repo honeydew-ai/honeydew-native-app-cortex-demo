@@ -231,16 +231,23 @@ class Roles(enum.Enum):  # pylint: disable=too-few-public-methods
 
 
 class History:
+    messages: typing.List[typing.Any]
+    ui_model: typing.List[typing.Dict[str, typing.Any]]
+
     def __init__(
         self,
         name: typing.Optional[str] = None,
         system_prompt: typing.Optional[str] = None,
     ):
-        self.messages: typing.List[typing.Any] = []
-        self.ui_model: typing.List[typing.Dict[str, typing.Any]] = []
+        self.system_prompt = system_prompt
         self.name = name
-        if system_prompt is not None and system_prompt != "":
-            self.push_system_message(encode(system_prompt))
+        self.clear()
+
+    def clear(self):
+        self.messages = []
+        self.ui_model = []
+        if self.system_prompt is not None and self.system_prompt != "":
+            self.push_system_message(encode(self.system_prompt))
 
     def push_system_message(self, msg: str) -> None:
         if msg is not None and msg != "":
@@ -771,10 +778,20 @@ def process_user_question(user_question: str) -> None:
 
 #
 # Main flow
-st.title("Honeydew Analyst")
-st.markdown(
-    f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`",
-)
+col1, col2 = st.columns([1, 0.1])
+with col1:
+    st.title("Honeydew Analyst")
+    st.markdown(
+        f"Semantic Model: `{HD_WORKSPACE}` on branch `{HD_BRANCH}`",
+    )
+with col2:
+    with st.container():
+        # poor man's vertical alignment
+        st.write("")
+        st.write("")
+        if st.button("♻️"):
+            history.clear()
+
 
 parent_st = st
 
