@@ -546,6 +546,8 @@ def clean_dataframe_for_presentation(
     # Remove NULLs in dimensions
     if _DONT_SHOW_NULLS_IN_DIMENSIONS and attributes:
         df = df.dropna(subset=attributes)
+    else:
+        df[attributes] = df[attributes].fillna("No data")
 
     return df
 
