@@ -142,16 +142,18 @@ def execute_sql(sql: str) -> typing.Any:
     return res
 
 
-def execute_sql_table(sql: str) -> typing.Any:
+def execute_sql_table(sql: str) -> pd.DataFrame:
     assert sql is not None and len(sql) > 0, "SQL is empty"
 
     if "SESSION" in st.session_state:
-        res = st.session_state.SESSION.sql(sql).to_pandas()
+        df = st.session_state.SESSION.sql(sql).to_pandas()
     else:
         assert "CONNECTION" in st.session_state, "No session / connection"
-        res = st.session_state.CONNECTION.cursor().execute(sql).fetch_pandas_all()
+        df = st.session_state.CONNECTION.cursor().execute(sql).fetch_pandas_all()
 
-    return res
+    # Numbering starts from 1, not 0 for presentation purposes
+    df.index = df.index + 1
+    return df
 
 
 def execute_llm(
@@ -301,7 +303,7 @@ class History:
 
     def push_assistant_query_result(
         self,
-        df: typing.Any,
+        df: pd.DataFrame,
     ) -> typing.Dict[str, typing.Any]:
         key = str(uuid.uuid4())[:8]
         msg = {
