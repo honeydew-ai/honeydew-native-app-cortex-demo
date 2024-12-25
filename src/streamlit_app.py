@@ -54,8 +54,8 @@ SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 _DEBUG = 1
 
 # Cortex LLM
-CORTEX_LLM = "llama3.1-405b"
-# CORTEX_LLM = "mistral-large2"
+# CORTEX_LLM = "llama3.1-405b"
+CORTEX_LLM = "mistral-large2"
 
 # Results limit
 RESULTS_LIMIT = 10000
@@ -65,6 +65,7 @@ HONEYDEW_ICON_URL = "https://honeydew.ai/wp-content/uploads/2022/12/Logo_Icon@2x
 
 _MAX_VALUES_TO_SHOW = 50
 _MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION = 50
+_DONT_SHOW_NULLS_IN_DIMENSIONS = True
 
 
 def supress_failures(
@@ -200,7 +201,8 @@ def execute_hd_ask_question(
                 branch => '{HD_BRANCH}',
                 question => '{question}',
                 history => { "[" + ",".join(hist) + "]"},
-                domain => '{HD_DOMAIN}') as response"""
+                domain => '{HD_DOMAIN}',
+                cortex_llm_name => '{CORTEX_LLM}') as response"""
 
     r = json.loads(execute_sql(sql)[0][0])
     return r
@@ -317,6 +319,14 @@ class History:
             }
 
             # Wrap it in a Markdown code block
+            self.messages.append(
+                self.to_llm_message(
+                    {
+                        "role": Roles.USER.value,
+                        "text": "show data",
+                    },
+                ),
+            )
             self.messages.append(
                 self.to_llm_message(
                     {
@@ -526,6 +536,22 @@ def render_chart(df: pd.DataFrame, json_query: typing.Dict[str, typing.Any]) -> 
     return True
 
 
+def clean_dataframe_for_presentation(
+    df: pd.DataFrame,
+    json_query: typing.Dict[str, typing.Any],
+) -> pd.DataFrame:
+
+    attributes = json_query["attributes"]
+
+    # Remove NULLs in dimensions
+    if _DONT_SHOW_NULLS_IN_DIMENSIONS and attributes:
+        df = df.dropna(subset=attributes)
+    else:
+        df[attributes] = df[attributes].fillna("No data")
+
+    return df
+
+
 def render_dataframe(df: pd.DataFrame) -> None:
     if len(df) == 0:
         st.markdown("No data available to display. Please refine your question.")
@@ -657,6 +683,7 @@ def render_message(
         if SHOW_SQL_QUERY:
             tab_names.append("SQL")
 
+        df = clean_dataframe_for_presentation(df, json_query)
         chart_tab, data_tab, explain_tab, hd_sql_tab = parent.tabs(tab_names)
 
         with chart_tab:
