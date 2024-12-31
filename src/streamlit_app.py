@@ -245,7 +245,7 @@ class History:
         self.name = name
         self.clear()
 
-    def clear(self):
+    def clear(self) -> None:
         self.messages = []
         self.ui_model = []
         if self.system_prompt is not None and self.system_prompt != "":
