@@ -201,7 +201,7 @@ def execute_hd_ask_question(
     sql = f"""select {HD_APP}.API.ASK_QUESTION(
                 workspace => '{HD_WORKSPACE}',
                 branch => '{HD_BRANCH}',
-                question => '{question}',
+                question => '{encode(question)}',
                 history => { "[" + ",".join(hist) + "]"},
                 domain => '{HD_DOMAIN}',
                 cortex_llm_name => '{CORTEX_LLM}') as response"""
