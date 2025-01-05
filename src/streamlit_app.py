@@ -68,7 +68,7 @@ _MAX_VALUES_TO_USE_FOR_FOLLOWUP_QUESTION = 50
 _DONT_SHOW_NULLS_IN_DIMENSIONS = True
 
 
-def supress_failures(
+def suppress_failures(
     func: typing.Callable[..., typing.Any],
 ) -> typing.Callable[..., typing.Any]:
     def func_without_errors(*args: typing.Any, **kw: typing.Any) -> typing.Any:
@@ -576,7 +576,7 @@ def render_dataframe(df: pd.DataFrame) -> None:
         )
 
 
-@supress_failures
+@suppress_failures
 def render_message(
     message: typing.Dict[str, typing.Any],
     parent: typing.Any,
@@ -726,7 +726,7 @@ def render_message(
     return parent
 
 
-@supress_failures
+@suppress_failures
 def process_user_question(user_question: str) -> None:
 
     history_clone = history.messages[:]
