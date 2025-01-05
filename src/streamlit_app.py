@@ -551,12 +551,16 @@ def clean_dataframe_for_presentation(
 ) -> pd.DataFrame:
 
     attributes = json_query["attributes"]
+    # Defensive programming: ignore ad-hocs to avoid failing below if they exist
+    attributes = [col for col in attributes if col in df.columns]
 
     # Remove NULLs in dimensions
     if _DONT_SHOW_NULLS_IN_DIMENSIONS and attributes:
-        df = df.dropna(subset=attributes)
-    else:
-        df[attributes] = df[attributes].fillna("No data")
+        # Note that remove rows where ALL values of dimensions are NULL
+        df = df.dropna(how="all", subset=attributes)
+
+    # Fill for presentation NULLs that remain (rows that are partially NULL)
+    df[attributes] = df[attributes].fillna("No data")
 
     return df
 
