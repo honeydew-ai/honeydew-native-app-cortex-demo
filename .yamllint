@@ -1,6 +1,9 @@
 ---
 extends: default
 
+ignore: |
+  .github/dependabot.yml
+
 rules:
   comments:
     min-spaces-from-content: 1
