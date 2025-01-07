@@ -1,5 +1,5 @@
 add-trailing-comma==3.1.0
-astroid==3.3.5
+astroid==3.3.8
 black==24.10.0
 cfgv==3.4.0
 dill==0.3.9
@@ -16,7 +16,7 @@ iniconfig==2.0.0
 isort==5.13.2
 lazy-object-proxy==1.9.0
 mccabe==0.7.0
-mypy==1.13.0
+mypy==1.14.1
 mypy-extensions==1.0.0
 nodeenv==1.9.1
 pathspec==0.12.1
@@ -25,7 +25,7 @@ pluggy==1.5.0
 pre-commit==4.0.1
 pycodestyle==2.12.0
 pyflakes==3.2.0
-pylint==3.3.1
+pylint==3.3.3
 pytest==8.2.2
 pyyaml==6.0.2
 sqlparse==0.5.0
