@@ -592,7 +592,7 @@ def render_message(
         search_str: str,
     ) -> typing.Optional[typing.Any]:
         # Split the search string into entity and name components
-        entity, name = search_str.split(".")
+        entity, name = search_str.split(".", 1)
 
         # Search in both attributes and metrics within components
         for section in ["attributes", "metrics"]:
@@ -623,21 +623,26 @@ def render_message(
     def get_item_caption(json_data: typing.Any, p: str, name: str) -> typing.Any:
         parts = [" * "]
 
-        item = find_item(json_data, name)
-
-        if item is not None and item.get("ui_url") is not None and item["ui_url"] != "":
-            parts.append(f" [{name}]({item['ui_url']})")
-        elif p == "filters":
+        if p == "filters":
             parts.append(f"`{name}`")
         else:
-            parts.append(name)
+            item = find_item(json_data, name)
 
-        if (
-            item is not None
-            and item["description"] is not None
-            and item["description"] != ""
-        ):
-            parts.append(f"\n\n    {item['description']}")
+            if (
+                item is not None
+                and item.get("ui_url") is not None
+                and item["ui_url"] != ""
+            ):
+                parts.append(f" [{name}]({item['ui_url']})")
+            else:
+                parts.append(name)
+
+            if (
+                item is not None
+                and item["description"] is not None
+                and item["description"] != ""
+            ):
+                parts.append(f"\n\n    {item['description']}")
 
         return "".join(parts)
 
