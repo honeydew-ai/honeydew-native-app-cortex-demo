@@ -54,8 +54,9 @@ SHOW_EXPLAIN_QUERY = 1  # Display Explain tab
 _DEBUG = 1
 
 # Cortex LLM
-# CORTEX_LLM = "llama3.1-405b"
 CORTEX_LLM = "mistral-large2"
+CORTEX_LLM = "claude-3-5-sonnet"
+# CORTEX_LLM = "llama3.1-405b"
 
 # Results limit
 RESULTS_LIMIT = 10000
