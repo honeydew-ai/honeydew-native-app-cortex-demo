@@ -45,7 +45,7 @@ sortedcontainers==2.4.0
 streamlit==1.35.0
 tenacity==8.5.0
 toml==0.10.2
-tornado==6.4.2
+tornado==6.5.1
 typing-extensions==4.12.2
 tzdata==2024.2
 urllib3==2.2.3
