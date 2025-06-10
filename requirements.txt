@@ -34,7 +34,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.0.0
 pytz==2024.2
 referencing==0.35.1
-requests==2.32.3
+requests==2.32.4
 rich==13.9.3
 rpds-py==0.20.1
 six==1.16.0
