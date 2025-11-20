@@ -1,4 +1,4 @@
 cython==0.29.30
-pip==25.2
+pip==25.3
 setuptools==78.1.1
 wheel==0.44.0
