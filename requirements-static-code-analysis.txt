@@ -1,6 +1,6 @@
 add-trailing-comma==3.1.0
 astroid==3.3.8
-black==24.10.0
+black==26.3.1
 cfgv==3.4.0
 dill==0.3.9
 distlib==0.3.9
